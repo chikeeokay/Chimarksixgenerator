@@ -1,0 +1,6 @@
+{
+  "name": "六合彩智能選",
+  "description": "A smart Mark Six number generator with customizable filters like odd/even, color, range, and past results exclusion. Includes a mock HKJC submission feature.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
