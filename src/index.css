@@ -10,6 +10,11 @@ body {
   background-color: #FFE867;
   background-image: radial-gradient(#F5D730 3px, transparent 3px);
   background-size: 30px 30px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*:focus {
+  outline: none;
 }
 
 .hide-scrollbar::-webkit-scrollbar {
@@ -19,6 +24,14 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+[data-sonner-toast] [data-content] {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";

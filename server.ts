@@ -12,79 +12,6 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
 
   // API Route to fetch latest marksix results
-  app.post("/api/check-screenshot", async (req, res) => {
-    try {
-      const { imageBase64 } = req.body;
-      if (!imageBase64) {
-        return res.status(400).json({ success: false, error: "Missing imageBase64" });
-      }
-
-      // Check if GEMINI_API_KEY is available
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY environment variable is not set");
-      }
-
-      // Lazy import to only initialize when needed
-      console.log("GEMINI_API_KEY length:", process.env.GEMINI_API_KEY?.length);
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const mimeTypeMatch = imageBase64.match(/^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,/);
-      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-      const base64Data = imageBase64.replace(/^data:image\/(png|jpeg|jpg|webp|heic|heif);base64,/, "");
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
-              },
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType
-                }
-              }
-            ]
-          }
-        ]
-      });
-
-      const text = response.text || "";
-      let parsed;
-      try {
-        parsed = JSON.parse(text.trim());
-      } catch (e) {
-        // cleanup if it still surrounds with markdown
-        const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleaned);
-      }
-
-      res.json({ success: true, bets: parsed });
-    } catch (error: any) {
-      console.error("Gemini API error (raw):", error);
-      let errorMsg = error.message;
-      if (errorMsg.includes("API key not valid") || errorMsg.includes("API_KEY_INVALID")) {
-        errorMsg = "API 金鑰無效。請至左側選單的「Secrets」面板中，確認已輸入一組正確且有效的 GEMINI_API_KEY。";
-      } else if (errorMsg.includes("GEMINI_API_KEY environment variable is not set")) {
-        errorMsg = "系統尚未設定 API 金鑰。請至左側選單的「Secrets」面板中，新增並設定您的 GEMINI_API_KEY。";
-      } else {
-        try {
-          const parsedObj = JSON.parse(errorMsg.replace(/^[^{]*/, ''));
-          if (parsedObj.error && parsedObj.error.message) {
-            errorMsg = parsedObj.error.message;
-          }
-        } catch (e) {
-            // Ignore parse errors, just use the original message
-        }
-      }
-      res.status(500).json({ success: false, error: errorMsg });
-    }
-  });
-
   app.get("/api/marksix", async (req, res) => {
     try {
       const response = await fetch('https://marksixinfo.com/latest20draws');
@@ -145,22 +72,16 @@ async function startServer() {
         // Ignore HKJC errors
       }
 
-      // Fallback
-      const fallbackDates = [
-        "18/04/2026", "16/04/2026", "14/04/2026", "11/04/2026", "09/04/2026",
-        "07/04/2026", "04/04/2026", "31/03/2026", "28/03/2026", "26/03/2026",
-        "24/03/2026", "21/03/2026", "19/03/2026", "17/03/2026", "12/03/2026",
-        "10/03/2026", "07/03/2026", "05/03/2026", "03/03/2026", "28/02/2026"
-      ];
-      let fallbackIndex = 0;
-
-      for (const mockDraw of MOCK_PAST_RESULTS) {
-        const drawStr = mockDraw.join(',');
+      // Fallback Dates
+      for (const mockDrawObj of MOCK_PAST_RESULTS) {
+        // Handle both older structures if any mapping changed, but now it's an object array
+        const mockArray = Array.isArray(mockDrawObj) ? mockDrawObj : mockDrawObj.numbers;
+        const mockDate = !Array.isArray(mockDrawObj) && mockDrawObj.date ? mockDrawObj.date : `Past Draw`;
+        
+        const drawStr = mockArray.join(',');
         if (!seen.has(drawStr)) {
           seen.add(drawStr);
-          const date = fallbackDates[fallbackIndex] || "";
-          draws.push({numbers: mockDraw, date: date});
-          fallbackIndex++;
+          draws.push({numbers: mockArray, date: mockDate});
         }
       }
       
