@@ -1763,8 +1763,8 @@ export default function App() {
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
                             <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2">
-                              <p>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</p>
-                              <p className="text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-lg border-2 border-[#FF4D4D]/20">註：目前暫不提供手機版自動點擊，只提供電腦版自動點擊教學。</p>
+                              <div>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</div>
+                              <div className="text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-lg border-2 border-[#FF4D4D]/20">註：目前暫不提供手機版自動點擊，只提供電腦版自動點擊教學。</div>
                             </DialogDescription>
                           </DialogHeader>
                           
