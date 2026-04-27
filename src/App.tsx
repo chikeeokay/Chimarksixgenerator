@@ -1758,8 +1758,8 @@ export default function App() {
                         <Sparkles className="w-3.5 h-3.5 mr-1" />
                         自動點擊 HKJC
                       </DialogTrigger>
-                      <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 relative max-h-[90vh]">
-                        <div className="p-6 sm:p-8 overflow-y-auto w-full max-h-[90vh] custom-scrollbar">
+                      <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
                             <DialogDescription className="font-bold text-black/80 text-sm sm:text-base">
@@ -2342,7 +2342,7 @@ export default function App() {
       </div>
 
       <Dialog open={isCheckDialogOpen} onOpenChange={setIsCheckDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
           <DialogHeader className="bg-[#ffedd5] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0">
             <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0">
               <SearchCheck className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -2350,7 +2350,7 @@ export default function App() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
+          <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 min-h-0 custom-scrollbar">
             <div className="space-y-2">
               <Label className="font-black text-base sm:text-lg">選擇您想核對的開彩期數：</Label>
               <Select value={checkDrawIndex.toString()} onValueChange={(val) => {
