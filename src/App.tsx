@@ -1762,18 +1762,13 @@ export default function App() {
                         <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
-                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base">
-                              由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。
+                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2">
+                              <p>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</p>
+                              <p className="text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-lg border-2 border-[#FF4D4D]/20">註：目前暫不提供手機版自動點擊，只提供電腦版自動點擊教學。</p>
                             </DialogDescription>
                           </DialogHeader>
                           
-                          <Tabs defaultValue={typeof window !== 'undefined' && window.innerWidth < 768 ? "mobile" : "desktop"} className="w-full mt-4">
-                            <TabsList className="flex w-full bg-transparent mb-6 h-auto gap-3">
-                              <TabsTrigger value="desktop" className="flex-1 font-black text-sm sm:text-base rounded-xl border-[3px] border-black data-[state=active]:bg-[#bbf7d0] data-[state=active]:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] data-[state=inactive]:bg-white data-[state=inactive]:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:data-[state=inactive]:bg-zinc-100 py-2.5 transition-all outline-none">電腦版</TabsTrigger>
-                              <TabsTrigger value="mobile" className="flex-1 font-black text-sm sm:text-base rounded-xl border-[3px] border-black data-[state=active]:bg-[#bbf7d0] data-[state=active]:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] data-[state=inactive]:bg-white data-[state=inactive]:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:data-[state=inactive]:bg-zinc-100 py-2.5 transition-all outline-none">手機版</TabsTrigger>
-                            </TabsList>
-                          
-                          <TabsContent value="desktop" className="space-y-4">
+                          <div className="w-full mt-4 space-y-4">
                             <div className="space-y-2">
                               <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 複製腳本</h4>
                               <Button 
@@ -1812,80 +1807,7 @@ export default function App() {
                                 ⚠️ 注意：書籤的號碼是固定的！每次重新生成號碼後，您必須刪除舊書籤，並「重新拖曳」一次新的按鈕到書籤列。
                               </p>
                             </div>
-                          </TabsContent>
-
-                          <TabsContent value="mobile" className="space-y-4">
-                            <div className="bg-[#FFE867] border-4 border-black rounded-xl p-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                              <h4 className="font-black text-base mb-2 flex items-center gap-2">
-                                🌟 推薦做法：建立手機書籤
-                              </h4>
-                              <p className="text-sm font-bold text-zinc-700 mb-2">
-                                這是最方便的方法，以後只要點擊書籤就能自動輸入，不需要每次複製貼上。
-                              </p>
-                              <Button 
-                                className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white text-black hover:bg-zinc-100 h-auto py-2 mb-3"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(getBookmarkletCode());
-                                  toast.success("完整腳本書籤已複製！");
-                                }}
-                              >
-                                <Copy className="w-4 h-4 mr-2" />
-                                1. 點擊複製完整書籤腳本
-                              </Button>
-                              <ol className="list-decimal list-inside space-y-1.5 font-bold text-sm text-zinc-700">
-                                <li>在手機瀏覽器打開 HKJC 投注網頁。</li>
-                                <li>將該網頁<strong className="text-black">加入書籤</strong> (或加到我的最愛)。</li>
-                                <li><strong className="text-black">編輯</strong>剛剛新增的書籤：
-                                  <ul className="list-disc list-inside ml-4 mt-1 text-xs">
-                                    <li>名稱改為「自動點擊 HKJC」</li>
-                                    <li>網址 (URL) 清空，並<strong className="text-[#FF4D4D]">貼上剛剛複製的腳本</strong>。</li>
-                                  </ul>
-                                </li>
-                                <li>儲存書籤。</li>
-                                <li>留在 HKJC 網頁，打開書籤選單點擊「自動點擊 HKJC」即可！</li>
-                              </ol>
-                              <p className="text-[11px] font-bold text-[#FF4D4D] mt-2">
-                                ⚠️ 注意：每次重新生成號碼後，您必須重新複製腳本，並「編輯更新」您的手機書籤網址。
-                              </p>
-                            </div>
-
-                            <div className="pt-2 border-t-4 border-black border-dashed">
-                              <h4 className="font-black text-base flex items-center gap-2 mb-3">
-                                備用做法：透過網址列執行
-                              </h4>
-                              <div className="space-y-3">
-                                <Button 
-                                  className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white text-black hover:bg-zinc-100 h-auto py-2"
-                                  onClick={() => {
-                                    const script = decodeURIComponent(getBookmarkletCode().replace('javascript:', ''));
-                                    navigator.clipboard.writeText(script);
-                                    toast.success("腳本已複製！");
-                                  }}
-                                >
-                                  <Copy className="w-4 h-4 mr-2" />
-                                  1. 點擊複製腳本 (不含 javascript:)
-                                </Button>
-                                
-                                <div className="bg-[#FF4D4D]/10 border-2 border-[#FF4D4D] rounded-xl p-3">
-                                  <p className="text-sm font-bold text-[#FF4D4D] mb-1">⚠️ 為什麼不能直接複製貼上 javascript: ？</p>
-                                  <p className="text-xs font-bold text-zinc-700">
-                                    手機瀏覽器（Safari/Chrome）基於安全機制，<strong className="text-black">會自動刪除貼上的 `javascript:`</strong>，所以貼上會變成空白！
-                                  </p>
-                                </div>
-
-                                <ol className="list-decimal list-inside space-y-1.5 font-bold text-sm text-zinc-700">
-                                  <li>在手機瀏覽器打開 HKJC 網頁並登入。</li>
-                                  <li>點擊瀏覽器的<strong>網址列</strong>。</li>
-                                  <li>
-                                    <span className="text-[#FF4D4D]">必須「手動輸入」</span> <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">javascript:</kbd> (注意最後有英文冒號)。
-                                  </li>
-                                  <li>在冒號後面，<strong>貼上</strong>您剛剛複製的腳本。</li>
-                                  <li>按下手機鍵盤上的「前往」或「Enter」即可自動點擊！</li>
-                                </ol>
-                              </div>
-                            </div>
-                          </TabsContent>
-                        </Tabs>
+                          </div>
                         </div>
                       </DialogContent>
                     </Dialog>
