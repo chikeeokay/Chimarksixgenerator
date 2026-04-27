@@ -26,11 +26,13 @@ export interface GenerateOptions {
   preferredOddCount?: number | null; // Exact number of odds requested
   preferredEvenCount?: number | null; // Exact number of evens requested
   colors?: BallColor[];
+  colorRatioOption?: number; // Ratio of color1 to color2, from 1 to 5. Means we need colorRatioOption of color2, and (6 - colorRatioOption) of color1
   recentMode?: "none" | "exclude" | "include"; // Mode for recent draws
   recentCount?: number; // How many recent draws to consider (1-10)
   recentDraws?: number[][];
   includeSpecial?: boolean; // Whether to include special numbers in recent draws
   mustInclude?: number[]; // Numbers that MUST be in every generated bet
+  excludedNumbers?: number[]; // Numbers that MUST NOT be in generated bet
 }
 
 export class PartialGenerationError extends Error {
@@ -50,11 +52,13 @@ export function generateBets(options: GenerateOptions): number[][] {
     onlyOdd = false,
     onlyEven = false,
     colors = ["red", "blue", "green"],
+    colorRatioOption = 3,
     recentMode = "none",
     recentCount = 5,
     recentDraws = [],
     includeSpecial = true,
     mustInclude = [],
+    excludedNumbers = [],
   } = options;
 
   let pool = MARK_SIX_NUMBERS.filter((num) => {
@@ -62,6 +66,7 @@ export function generateBets(options: GenerateOptions): number[][] {
     // but the user expects them to be in the pool or we just inject them later.
     // It's better to just include them forcefully.
     if (mustInclude.includes(num)) return false; // Remove from pool to prevent duplicates when injecting
+    if (excludedNumbers.includes(num)) return false; // User explicitly excluded
 
     const inRange = ranges.some(r => num >= r.start && num <= r.end);
     if (!inRange) return false;
@@ -112,6 +117,13 @@ export function generateBets(options: GenerateOptions): number[][] {
         validCounts = false;
     }
 
+    if (colors.length === 2 && options.colorRatioOption) {
+      const color2Count = bet.filter(n => getBallColor(n) === colors[1]).length;
+      if (color2Count !== options.colorRatioOption) {
+        validCounts = false;
+      }
+    }
+
     if (validCounts && !seenBets.has(betKey)) {
       seenBets.add(betKey);
       bets.push(bet);
@@ -129,7 +141,8 @@ export function generateBets(options: GenerateOptions): number[][] {
 }
 
 function generateSingleBet(pool: number[], mustInclude: number[] = []): number[] {
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const filteredPool = pool.filter(n => !mustInclude.includes(n));
+  const shuffled = [...filteredPool].sort(() => Math.random() - 0.5);
   const selectedNeeded = 6 - mustInclude.length;
   const selected = shuffled.slice(0, selectedNeeded);
   return [...mustInclude, ...selected].sort((a, b) => a - b);

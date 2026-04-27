@@ -52,6 +52,8 @@ import {
   Image as ImageIcon,
   Upload,
   SearchCheck,
+  RotateCcw,
+  MessageCircle,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import {
@@ -71,7 +73,11 @@ export default function App() {
   const [oddEven, setOddEven] = useState<"all" | "odd" | "even">("all");
   const [colors, setColors] = useState<BallColor[]>(["red", "blue", "green"]);
   const [luckyNumbers, setLuckyNumbers] = useState<number[]>([]);
+  const [excludedNumbers, setExcludedNumbers] = useState<number[]>([]);
   const [isLuckyDialogOpen, setIsLuckyDialogOpen] = useState(false);
+  const [isExcludedDialogOpen, setIsExcludedDialogOpen] = useState(false);
+  const [colorRatioOption, setColorRatioOption] = useState<number>(3); // 1 to 5
+
   const [enableRecent, setEnableRecent] = useState(false);
   const [recentMode, setRecentMode] = useState<"exclude" | "include" | "">("");
   const [recentCount, setRecentCount] = useState<number>(5);
@@ -164,6 +170,24 @@ export default function App() {
     }
   }, [analysisDrawIndex]);
 
+  const resetSettings = () => {
+    setBetCount(6);
+    setPreferredOddCount(null);
+    setPreferredEvenCount(null);
+    setRanges([{start: 1, end: 49}]);
+    setOddEven("all");
+    setColors(["red", "blue", "green"]);
+    setColorRatioOption(3);
+    setLuckyNumbers([]);
+    setExcludedNumbers([]);
+    setBankers([]);
+    setExcludedLegs([]);
+    setEnableRecent(false);
+    setRecentMode("");
+    setRecentCount(5);
+    setIncludeSpecial(false);
+  };
+
   const handleGenerate = () => {
     if (enableRecent && recentMode === "") {
       toast.error("請選擇「排除近期號碼」或「只買近期號碼」");
@@ -187,11 +211,13 @@ export default function App() {
         preferredOddCount,
         preferredEvenCount,
         colors,
+        colorRatioOption: colors.length === 2 ? colorRatioOption : undefined,
         recentMode: enableRecent ? (recentMode as "exclude" | "include") : "none",
         recentCount,
         recentDraws: rawRecentDraws,
         includeSpecial,
         mustInclude: luckyNumbers,
+        excludedNumbers: excludedNumbers,
       });
 
       setTimeout(() => {
@@ -225,7 +251,7 @@ export default function App() {
   const handleCopyBets = () => {
     if (generatedBets.length === 0) return;
     const text = generatedBets
-      .map((bet, index) => `注 ${index + 1}: ${bet.map((n) => n.toString().padStart(2, "0")).join(", ")}`)
+      .map((bet, index) => `注 ${index + 1}: ${bet.map((n) => n.toString()).join(", ")}`)
       .join("\n");
     navigator.clipboard
       .writeText(text)
@@ -397,6 +423,117 @@ export default function App() {
     }
   };
 
+  const handleScreenshotUploadForRegenerate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    toast.loading(
+      <div className="text-center w-full font-bold text-[16px] text-zinc-700">正在解析圖片載入號碼...</div>,
+      { id: "regenerate-screenshot" }
+    );
+
+    try {
+      const base64data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const MAX_DIMENSION = 1000;
+
+            if (width > height && width > MAX_DIMENSION) {
+              height = Math.round((height * MAX_DIMENSION) / width);
+              width = MAX_DIMENSION;
+            } else if (height > MAX_DIMENSION) {
+              width = Math.round((width * MAX_DIMENSION) / height);
+              height = MAX_DIMENSION;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              // Compress to JPEG with 0.6 quality to drastically reduce payload size
+              resolve(canvas.toDataURL('image/jpeg', 0.6));
+            } else {
+              resolve(e.target?.result as string);
+            }
+          };
+          img.onerror = reject;
+          img.src = e.target?.result as string;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const mimeTypeMatch = base64data.match(/^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+      const base64DataReplaced = base64data.replace(/^data:image\/(png|jpeg|jpg|webp|heic|heif);base64,/, "");
+
+      // Frontend implementation calling Gemini directly
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY });
+
+      // Add a timeout to prevent hanging forever
+      const fetchPromise = ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
+              },
+              {
+                inlineData: {
+                  data: base64DataReplaced,
+                  mimeType: mimeType
+                }
+              }
+            ]
+          }
+        ]
+      });
+
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("解析超時，請重試或手動輸入")), 60000));
+      const response = await Promise.race([fetchPromise, timeoutPromise]) as any;
+
+      const text = response.text || "";
+      let parsed;
+      try {
+        parsed = JSON.parse(text.trim());
+      } catch (err) {
+        // cleanup if it still surrounds with markdown
+        const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      }
+
+      if (Array.isArray(parsed)) {
+        const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
+        if (validBets.length > 0) {
+          setGeneratedBets(validBets);
+          toast.success(<div className="text-center flex-1 font-bold">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
+        } else {
+          throw new Error("無法識別號碼，請使用本系統截圖");
+        }
+      } else {
+        throw new Error("無法識別號碼，請使用本系統截圖");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(
+        <div className="text-center flex-1 font-bold text-[15px] mr-4">
+          {err.message || "無法識別號碼，請使用本系統截圖"}
+        </div>,
+        { id: "regenerate-screenshot" }
+      );
+    } finally {
+      e.target.value = ""; // reset input
+    }
+  };
+
   const handleCaptureScreenshot = async () => {
     const captureArea = document.getElementById('capture-area');
     if (!captureArea) return;
@@ -459,9 +596,9 @@ export default function App() {
           .index { font-weight: 900; font-size: 14px; transform: rotate(-10deg); width: 20px; text-align: center; }
           .balls { display: flex; gap: 4px; flex-wrap: wrap; }
           .ball { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #000; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 11px; color: #fff; text-shadow: 1px 1px 0 #000; box-shadow: 1px 1px 0 #000; }
-          .red { background: #FF4D4D; }
-          .blue { background: #3b82f6; }
-          .green { background: #22c55e; }
+          .red { background: #FF9999; }
+          .blue { background: #99CCFF; }
+          .green { background: #99FF99; }
         </style>
       </head>
       <body>
@@ -526,14 +663,18 @@ export default function App() {
           return res;
         };
         const triggerClick = (el, win) => {
+          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          const rect = el.getBoundingClientRect();
+          const cx = Math.round(rect.left + rect.width / 2);
+          const cy = Math.round(rect.top + rect.height / 2);
           el.click();
           if(win.MouseEvent){
-            el.dispatchEvent(new win.MouseEvent('mousedown', {bubbles: true}));
-            el.dispatchEvent(new win.MouseEvent('mouseup', {bubbles: true}));
+            el.dispatchEvent(new win.MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new win.MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
           }
           if(win.PointerEvent){
-            el.dispatchEvent(new win.PointerEvent('pointerdown', {bubbles: true}));
-            el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true}));
+            el.dispatchEvent(new win.PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
 
@@ -546,24 +687,44 @@ export default function App() {
             const frames = getFrames(window);
             for(let {w, d} of frames) {
                 try {
-                    const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //img[@alt='"+str+"' or @alt='"+pad+"' or contains(@src, '"+pad+".')] | //*[(normalize-space(@title)='"+str+"' or normalize-space(@title)='"+pad+"')] | //*[@class and contains(@class, 'ball') and (normalize-space()='"+str+"' or normalize-space()='"+pad+"')]";
+                    const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
                     const els = d.evaluate(xp, d, null, 7, null);
+                    let targetEl = null;
+
                     for(let i=0; i<els.snapshotLength; i++){
                       const el = els.snapshotItem(i);
                       const rect = el.getBoundingClientRect();
-                      if(rect.width > 0 && rect.height > 0){ 
-                        triggerClick(el, w); 
-                        clicked = true;
-                        break; 
+                      if(rect.width > 0 && rect.height > 0){
+                        let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
+                        if (isSelectedTray) continue;
+                        
+                        let hasChildrenText = false;
+                        for(let c of el.children) {
+                          if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                            hasChildrenText = true;
+                          }
+                        }
+                        if (hasChildrenText) continue;
+                        
+                        if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                            targetEl = el;
+                            if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                              break;
+                            }
+                        }
                       }
                     }
-                    if(clicked) break;
+                    if(targetEl){ 
+                      triggerClick(targetEl, w); 
+                      clicked = true;
+                      break; 
+                    }
                 } catch(e){}
             }
             if (!clicked) console.log("找不到號碼: " + str);
-            await sleep(300);
+            await sleep(800);
           }
-          await sleep(1000);
+          await sleep(2000);
           
           let clickedAdd = false;
           const frames2 = getFrames(window);
@@ -584,7 +745,7 @@ export default function App() {
               } catch(e){}
           }
           if(clickedAdd) count++;
-          await sleep(2500);
+          await sleep(5000);
         }
         alert("電腦版自動點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。");
       })();`;
@@ -598,12 +759,16 @@ export default function App() {
         }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const triggerClick = (el) => {
+          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          const rect = el.getBoundingClientRect();
+          const cx = Math.round(rect.left + rect.width / 2);
+          const cy = Math.round(rect.top + rect.height / 2);
           el.click();
-          el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-          el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+          el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+          el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
           if (window.PointerEvent) {
-            el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
-            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+            el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
         let count = 0;
@@ -611,22 +776,43 @@ export default function App() {
           for(const num of bet){
             const str = num.toString();
             const pad = num < 10 ? '0'+num : str;
-            const xp = "//*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"') and not(*)]";
+            const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
             const els = document.evaluate(xp, document, null, 7, null);
             let clicked = false;
+            let targetEl = null;
+
             for(let i=0; i<els.snapshotLength; i++){
               const el = els.snapshotItem(i);
               const rect = el.getBoundingClientRect();
-              if(rect.width > 0 && rect.height > 0){ 
-                triggerClick(el); 
-                clicked = true;
-                break; 
+              if(rect.width > 0 && rect.height > 0){
+                let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
+                if (isSelectedTray) continue;
+                
+                let hasChildrenText = false;
+                for(let c of el.children) {
+                  if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                    hasChildrenText = true;
+                  }
+                }
+                if (hasChildrenText) continue;
+                
+                if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                    targetEl = el;
+                    if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                      break;
+                    }
+                }
               }
             }
+            if(targetEl){ 
+              triggerClick(targetEl); 
+              clicked = true;
+            }
+
             if (!clicked) console.log("找不到號碼: " + str);
-            await sleep(300);
+            await sleep(800);
           }
-          await sleep(1000);
+          await sleep(2000);
           
           let clickedAdd = false;
           const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項']";
@@ -650,7 +836,7 @@ export default function App() {
           }
           
           if(clickedAdd) count++;
-          await sleep(2500);
+          await sleep(5000);
         }
         alert("自動點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。");
       })();`;
@@ -686,13 +872,15 @@ export default function App() {
               </span>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 min-w-0 pb-0.5 sm:flex-1">
-              <div className="flex flex-col sm:flex-row sm:items-end sm:gap-2 min-w-0 shrink-0">
-                <h1 className="text-base sm:text-2xl font-black tracking-tight uppercase whitespace-nowrap leading-tight truncate sm:overflow-visible">
-                  池要中六合彩
-                </h1>
-                <span className="text-[9px] sm:text-sm font-bold text-zinc-500 whitespace-nowrap leading-none sm:pb-[2px] truncate sm:overflow-visible">
-                  此系統由池記桌遊提供
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 min-w-0 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2 font-black text-black bg-[#FFD700] px-2 py-0.5 sm:px-3 sm:py-1 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] sm:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] leading-none w-fit">
+                  <h1 className="text-[17px] sm:text-xl tracking-tighter uppercase whitespace-nowrap leading-none m-0 p-0">
+                    池要中六合彩
+                  </h1>
+                  <span className="text-[10px] sm:text-xs font-bold text-black/80 whitespace-nowrap leading-none mt-[1px] sm:mt-0">
+                    此系統由池記桌遊提供
+                  </span>
+                </div>
               </div>
               <div className="hidden lg:flex flex-1 justify-between gap-x-3 gap-y-10 flex-wrap overflow-hidden px-4 pl-8 self-center max-h-[44px] pt-0.5">
                 {Array.from({ length: 15 }).map((_, i) => (
@@ -733,27 +921,38 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-0 sm:px-4 pt-0 pb-2 sm:pt-0 sm:pb-2">
+      <main className="max-w-[1600px] mx-auto px-0 sm:px-4 pt-0 pb-2 sm:pt-0 sm:pb-2 bg-black">
         <div className={`grid grid-cols-1 ${generatedBets.length === 0 ? "lg:grid-cols-12" : ""} gap-1.5 sm:gap-4`}>
           {/* Left Column: Settings */}
           {generatedBets.length === 0 && (
             <div className="lg:col-span-5 space-y-2">
             <Card className="border-y-[3px] sm:border-4 border-x-0 sm:border-x-4 border-black rounded-none sm:rounded-3xl shadow-none sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white overflow-hidden p-0 gap-0">
-              <CardHeader className="flex flex-col sm:flex-row sm:items-end sm:gap-2 space-y-0 bg-[#ffedd5] border-b-[3px] sm:border-b-4 border-black px-3 py-2 sm:px-4 sm:py-3 m-0 rounded-none w-full !grid-cols-1 sm:!flex">
-                <CardTitle className="flex items-center gap-1.5 text-base sm:text-xl font-black shrink-0">
-                  <Settings2 className="w-4 h-4 sm:w-5 sm:h-5 sm:mb-[1px]" />
-                  號碼生成設定
-                </CardTitle>
-                <CardDescription className="text-black font-bold opacity-80 text-[11px] sm:text-[15px] leading-none mt-0.5 sm:mt-0 sm:pb-[2px] truncate">
-                  自訂您的幸運選號策略 ✨
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between sm:items-end sm:gap-2 space-y-0 bg-[#ffedd5] border-b-[3px] sm:border-b-4 border-black px-3 py-2 sm:px-4 sm:py-3 m-0 rounded-none w-full !grid-cols-1 sm:!flex">
+                <div className="flex flex-col sm:flex-row sm:items-end sm:gap-2">
+                  <CardTitle className="flex items-center gap-1.5 text-base sm:text-xl font-black shrink-0">
+                    <Settings2 className="w-4 h-4 sm:w-5 sm:h-5 sm:mb-[1px]" />
+                    號碼生成設定
+                  </CardTitle>
+                  <CardDescription className="text-black font-bold opacity-80 text-[11px] sm:text-[15px] leading-none mt-0.5 sm:mt-0 sm:pb-[2px] truncate">
+                    自訂您的幸運選號策略 ✨
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={resetSettings} 
+                  className="bg-[#FF5C00] text-black border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-[#E65300] hover:text-black hover:translate-x-px hover:translate-y-px hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all font-bold h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm shrink-0"
+                >
+                  <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5 text-black" />
+                  重設
+                </Button>
               </CardHeader>
               <CardContent className="space-y-1.5 px-3 pb-3 pt-2 sm:space-y-2 sm:px-4 sm:pb-4 sm:pt-3">
                 {/* Bet Count */}
                 <div className="space-y-0.5">
                   <div className="flex justify-between items-center">
                     <Label className="text-base font-bold">生成注數</Label>
-                    <span className="font-black text-lg text-black bg-[#FFD700] px-3 py-0.5 border-2 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform rotate-2">
+                    <span className="font-black text-lg text-black bg-[#FFD700] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
                       {betCount} 注
                     </span>
                   </div>
@@ -793,7 +992,7 @@ export default function App() {
                     <div key={index} className="space-y-1">
                       <div className="flex justify-end items-center">
                         {ranges.length > 1 && <span className="text-sm font-bold text-zinc-500 mr-auto">範圍 {index + 1}</span>}
-                    <span className="font-black text-[15px] sm:text-lg text-black bg-[#FFD700] px-2 py-0.5 border-2 border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform -rotate-2">
+                    <span className="font-black text-[15px] sm:text-lg text-black bg-[#FFD700] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
                       {range.start} - {range.end}
                     </span>
                       </div>
@@ -887,7 +1086,7 @@ export default function App() {
                           handleColorToggle("red");
                         }
                       }}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${colors.includes("red") && colors.length < 3 ? "bg-[#FF4D4D] text-black translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-red-50 text-black/50"}`}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${colors.includes("red") && colors.length < 3 ? "bg-[#FF9999] text-black translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-red-50 text-black/50"}`}
                     >
                       包含紅波
                     </button>
@@ -899,7 +1098,7 @@ export default function App() {
                           handleColorToggle("blue");
                         }
                       }}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${colors.includes("blue") && colors.length < 3 ? "bg-[#3b82f6] text-black translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-blue-50 text-black/50"}`}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${colors.includes("blue") && colors.length < 3 ? "bg-[#99CCFF] text-black translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-blue-50 text-black/50"}`}
                     >
                       包含藍波
                     </button>
@@ -911,11 +1110,40 @@ export default function App() {
                           handleColorToggle("green");
                         }
                       }}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${colors.includes("green") && colors.length < 3 ? "bg-[#22c55e] text-black translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-green-50 text-black/50"}`}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${colors.includes("green") && colors.length < 3 ? "bg-[#99FF99] text-black translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-green-50 text-black/50"}`}
                     >
                       包含綠波
                     </button>
                   </div>
+                  {colors.length === 2 && (
+                    <div className="mt-4 pt-4 border-t-2 border-black border-dashed flex flex-col gap-3">
+                      <Label className="text-sm font-bold flex justify-between items-center">
+                        <span>波色比例 (共 6 球)</span>
+                        <span className="font-black text-[15px] sm:text-[16px] text-black bg-[#FFD700] px-2 py-0.5 border-[3px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                          {colors[0] === "red" ? "紅" : colors[0] === "blue" ? "藍" : "綠"} {6 - (colorRatioOption || 3)} : {colorRatioOption || 3} {colors[1] === "red" ? "紅" : colors[1] === "blue" ? "藍" : "綠"}
+                        </span>
+                      </Label>
+                      <div className="flex items-center gap-3">
+                        <span className={`flex-none flex items-center justify-center font-black aspect-square w-8 h-8 text-sm sm:text-base rounded-full border-[2.5px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] ${colors[0] === "red" ? "bg-[#FF9999] text-black" : colors[0] === "blue" ? "bg-[#99CCFF] text-black" : "bg-[#99FF99] text-black"}`}>
+                          {colors[0] === "red" ? "紅" : colors[0] === "blue" ? "藍" : "綠"}
+                        </span>
+                        <Slider
+                          value={[colorRatioOption || 3]}
+                          onValueChange={(val) => {
+                            const newValue = Array.isArray(val) ? val[0] : val;
+                            setColorRatioOption(newValue);
+                          }}
+                          max={5}
+                          min={1}
+                          step={1}
+                          className="w-full flex-1 cursor-pointer"
+                        />
+                        <span className={`flex-none flex items-center justify-center font-black aspect-square w-8 h-8 text-sm sm:text-base rounded-full border-[2.5px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] ${colors[1] === "red" ? "bg-[#FF9999] text-black" : colors[1] === "blue" ? "bg-[#99CCFF] text-black" : "bg-[#99FF99] text-black"}`}>
+                          {colors[1] === "red" ? "紅" : colors[1] === "blue" ? "藍" : "綠"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Lucky Numbers Input */}
@@ -936,7 +1164,7 @@ export default function App() {
                           <div className="flex flex-wrap gap-1.5">
                             {luckyNumbers.map(num => {
                               const color = getBallColor(num);
-                              const bgColor = color === "red" ? "bg-[#FF4D4D]" : color === "blue" ? "bg-[#3b82f6]" : "bg-[#22c55e]";
+                              const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
                               return (
                                 <div key={num} className={`w-8 h-8 rounded-full border-2 border-black flex items-center justify-center font-black text-sm text-black ${bgColor}`}>
                                   {num}
@@ -960,10 +1188,15 @@ export default function App() {
                           <div className="grid grid-cols-7 gap-1.5 sm:gap-2 my-2">
                             {MARK_SIX_NUMBERS.map(num => {
                               const isSelected = luckyNumbers.includes(num);
+                              const isDisabled = excludedNumbers.includes(num);
                               return (
                                 <button
                                   key={num}
                                   onClick={() => {
+                                    if (isDisabled) {
+                                      toast.error("此號碼己在剔除名單中");
+                                      return;
+                                    }
                                     if (isSelected) {
                                       setLuckyNumbers(prev => prev.filter(n => n !== num));
                                     } else {
@@ -975,10 +1208,10 @@ export default function App() {
                                     }
                                   }}
                                   className={`
-                                    aspect-square rounded-full border-[2.5px] border-black flex items-center justify-center font-black text-sm sm:text-base shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all active:shadow-none
+                                    aspect-square rounded-full border-[2.5px] border-black flex items-center justify-center font-black text-sm sm:text-base shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] transition-all active:shadow-none
                                     ${isSelected 
-                                      ? getBallColor(num) === "red" ? "bg-[#FF4D4D] text-black" : getBallColor(num) === "blue" ? "bg-[#3b82f6] text-black" : "bg-[#22c55e] text-black" 
-                                      : "bg-white text-black"
+                                      ? getBallColor(num) === "red" ? "bg-[#FF9999] text-black border-zinc-900 shadow-none translate-y-[1px] translate-x-[1px]" : getBallColor(num) === "blue" ? "bg-[#99CCFF] text-black border-zinc-900 shadow-none translate-y-[1px] translate-x-[1px]" : "bg-[#99FF99] text-black border-zinc-900 shadow-none translate-y-[1px] translate-x-[1px]" 
+                                      : isDisabled ? "bg-zinc-100 text-zinc-400 border-zinc-300 shadow-none cursor-not-allowed opacity-50" : "bg-white text-black hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none"
                                     }
                                   `}
                                 >
@@ -1008,7 +1241,114 @@ export default function App() {
                       {luckyNumbers.length > 0 && (
                         <Button 
                           onClick={() => setLuckyNumbers([])}
-                          className="flex-none h-auto min-h-12 w-16 border-4 border-black rounded-xl font-black bg-[#FF4D4D] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                          className="flex-none h-auto min-h-12 w-16 border-[3px] border-black rounded-xl font-black bg-[#FF4D4D] text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                          title="清除所有號碼"
+                        >
+                          刪除
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <p className="text-xs font-bold text-zinc-500 mt-1">
+                      最多可填寫 6 個號碼。系統每一注都必定會包含這些號碼。
+                      <br/>
+                      <span className="text-[#3b82f6]">選取的幸運號碼可以不在選取的號碼範圍﹐但依然可以生成。</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Excluded Numbers Input */}
+                <div className="space-y-1.5 pt-1 border-t-[3px] border-black border-dashed">
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-base font-bold flex items-center gap-2">
+                      選擇你必要剔除號碼
+                      <span className="text-[11px] bg-[#FFE867] px-1.5 py-[1px] border border-black rounded shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">選填</span>
+                    </Label>
+                    
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setIsExcludedDialogOpen(true)}
+                        className="flex-1 justify-start h-auto min-h-12 py-2 px-3 border-4 border-black rounded-xl font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white whitespace-normal text-left"
+                      >
+                        {excludedNumbers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {excludedNumbers.map(num => {
+                              const color = getBallColor(num);
+                              const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                              return (
+                                <div key={num} className={`w-8 h-8 rounded-full border-2 border-black flex items-center justify-center font-black text-sm text-black ${bgColor}`}>
+                                  {num}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-500">點擊選擇號碼 ...</span>
+                        )}
+                      </Button>
+                      <Dialog open={isExcludedDialogOpen} onOpenChange={setIsExcludedDialogOpen}>
+                        <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] bg-white text-black p-4 sm:p-6">
+                          <DialogHeader>
+                            <DialogTitle className="text-xl font-black">選擇剔除號碼</DialogTitle>
+                            <DialogDescription className="font-bold text-black/80">
+                              已選 {excludedNumbers.length} 個號碼
+                            </DialogDescription>
+                          </DialogHeader>
+                          
+                          <div className="grid grid-cols-7 gap-1.5 sm:gap-2 my-2">
+                            {MARK_SIX_NUMBERS.map(num => {
+                              const isSelected = excludedNumbers.includes(num);
+                              const isDisabled = luckyNumbers.includes(num);
+                              return (
+                                <button
+                                  key={num}
+                                  onClick={() => {
+                                    if (isDisabled) {
+                                      toast.error("此號碼己在幸運號碼中");
+                                      return;
+                                    }
+                                    if (isSelected) {
+                                      setExcludedNumbers(prev => prev.filter(n => n !== num));
+                                    } else {
+                                      setExcludedNumbers(prev => [...prev, num].sort((a, b) => a - b));
+                                    }
+                                  }}
+                                  className={`
+                                    aspect-square rounded-full border-[2.5px] border-black flex items-center justify-center font-black text-sm sm:text-base shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] transition-all active:shadow-none
+                                    ${isSelected 
+                                      ? "bg-zinc-800 text-white border-zinc-900 shadow-none translate-y-[1px] translate-x-[1px]" 
+                                      : isDisabled ? "bg-zinc-100 text-zinc-400 border-zinc-300 shadow-none cursor-not-allowed opacity-50" : "bg-white text-black hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none"
+                                    }
+                                  `}
+                                >
+                                  {num}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          
+                          <div className="flex gap-3 mt-2">
+                            <Button 
+                              onClick={() => setExcludedNumbers([])}
+                              className="flex-none border-4 border-black font-black text-lg bg-zinc-200 text-black hover:bg-zinc-300 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all py-6 px-4"
+                            >
+                              全部清除
+                            </Button>
+                            <Button 
+                              onClick={() => setIsExcludedDialogOpen(false)}
+                              className="flex-1 border-4 border-black font-black text-lg bg-[#FFE867] text-black hover:bg-[#FFD700] rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all py-6"
+                            >
+                              確定
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      
+                      {excludedNumbers.length > 0 && (
+                        <Button 
+                          onClick={() => setExcludedNumbers([])}
+                          className="flex-none h-auto min-h-12 w-16 border-[3px] border-black rounded-xl font-black bg-[#FF4D4D] text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
                           title="清除所有號碼"
                         >
                           刪除
@@ -1017,7 +1357,7 @@ export default function App() {
                     </div>
                     
                     <p className="text-xs font-bold text-zinc-500">
-                      最多可填寫 6 個號碼。系統每一注都必定會包含這些號碼。
+                      系統生成號碼時必定不包含這些號碼。
                     </p>
                   </div>
                 </div>
@@ -1085,7 +1425,7 @@ export default function App() {
                             }}
                             className="py-1 cursor-pointer flex-1"
                           />
-                          <span className="font-black text-xs bg-[#FFE867] px-1.5 py-0.5 border-2 border-black rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform rotate-2 whitespace-nowrap select-none">
+                          <span className="font-black text-xs sm:text-sm bg-[#FFE867] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] whitespace-nowrap select-none">
                             參考 {recentCount || 0} 期
                           </span>
                         </div>
@@ -1096,7 +1436,7 @@ export default function App() {
               </CardContent>
               <CardFooter className="bg-zinc-100 border-t-[3px] border-black py-2 px-3 sm:py-3 sm:px-4 m-0 rounded-none w-full flex flex-col justify-center gap-3 mt-auto">
                 <Button
-                  className="w-fit bg-[#FF4D4D] hover:bg-[#FF3333] text-black h-auto py-1.5 px-6 text-lg font-black border-4 border-black rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all mx-auto"
+                  className="w-fit bg-orange-400 hover:bg-orange-500 text-black h-auto py-1.5 px-6 text-lg font-black border-4 border-black rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all mx-auto"
                   onClick={handleGenerate}
                   disabled={isGenerating}
                 >
@@ -1116,6 +1456,35 @@ export default function App() {
                   <SearchCheck className="w-5 h-5 mr-1" />
                   核對中獎號碼
                 </Button>
+
+                <div className="flex flex-col sm:flex-row gap-2 w-full justify-center mt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 max-w-sm bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                    onClick={() => document.getElementById('regenerate-upload')?.click()}
+                  >
+                    <Upload className="w-4 h-4 mr-1.5" />
+                    上載本系統之前生成了的號碼截圖重新生成
+                  </Button>
+                  <input 
+                    type="file" 
+                    id="regenerate-upload" 
+                    className="hidden" 
+                    accept="image/*"
+                    onChange={handleScreenshotUploadForRegenerate}
+                  />
+
+                  {generatedBets.length > 0 && (
+                    <Button
+                      variant="outline"
+                      className="flex-1 max-w-sm bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                      onClick={() => setIsHkjcDialogOpen(true)}
+                    >
+                      <MonitorUp className="w-4 h-4 mr-1.5" />
+                      自動點擊 HKJC 腳本
+                    </Button>
+                  )}
+                </div>
               </CardFooter>
             </Card>
           </div>
@@ -1125,11 +1494,11 @@ export default function App() {
           <div className={generatedBets.length === 0 ? "lg:col-span-7 space-y-4" : generatedBets.length > 5 ? "max-w-6xl mx-auto w-full space-y-2 sm:space-y-4" : "max-w-2xl mx-auto w-full space-y-1 sm:space-y-2"}>
             {generatedBets.length > 0 ? (
               <div className="space-y-1 sm:space-y-2">
-                <div className={`flex flex-col gap-1 ${generatedBets.length > 5 ? "items-center" : ""}`}>
-                  <div className="bg-white border-4 border-black py-0.5 px-2 sm:py-1 sm:px-3 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit flex-shrink-0">
-                    <h2 className="text-lg sm:text-xl font-black flex items-center gap-1.5 sm:gap-2 px-2">
-                      <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-black" />
-                      成功生成 {generatedBets.length} 注號碼！ 🎉
+                <div className="flex flex-col gap-1 items-center justify-center w-full">
+                  <div className="bg-black text-[#FFD700] border-4 border-black py-1 px-3 sm:py-1.5 sm:px-4 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit mx-auto">
+                    <h2 className="text-lg sm:text-xl font-black flex items-center justify-center gap-1.5 sm:gap-2">
+                      <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#FFD700] shrink-0" />
+                      <span>成功生成 {generatedBets.length} 注號碼！ 🎉</span>
                     </h2>
                   </div>
                   
@@ -1203,7 +1572,7 @@ export default function App() {
                     const totalCost = totalBetsWithBankers * 10;
 
                     return (
-                      <div className="bg-[#dcfce7] max-w-3xl mx-auto border-4 border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative mt-1 sm:mt-2 mb-2 w-full">
+                      <div className="bg-[#ffedd5] max-w-3xl mx-auto border-4 border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative mt-1 sm:mt-2 mb-2 w-full">
                         <h3 className="text-base sm:text-lg font-black flex items-center gap-1.5 text-black">
                           💡 號碼高度重覆！建議使用「膽拖」投注
                         </h3>
@@ -1226,14 +1595,11 @@ export default function App() {
                                 let baseBgClass = "bg-white text-black border-black";
                                 let textColor = "text-black";
                                 if (color === "red") {
-                                  baseBgClass = "bg-[#FF4D4D]";
-                                  textColor = "text-white";
+                                  baseBgClass = "bg-[#FF9999]";
                                 } else if (color === "blue") {
-                                  baseBgClass = "bg-[#3b82f6]";
-                                  textColor = "text-white";
+                                  baseBgClass = "bg-[#99CCFF]";
                                 } else if (color === "green") {
-                                  baseBgClass = "bg-[#22c55e]";
-                                  textColor = "text-white";
+                                  baseBgClass = "bg-[#99FF99]";
                                 }
 
                                 return (
@@ -1245,7 +1611,7 @@ export default function App() {
                                       onClick={() => handleToggleBanker(num)}
                                       className={`w-[40px] h-[40px] sm:w-[44px] sm:h-[44px] rounded-full border-[3px] border-black font-black text-[22px] sm:text-[24px] leading-none pt-0.5 tracking-tighter flex items-center justify-center transition-all shrink-0 ${baseBgClass} ${textColor} ${isSelected ? 'shadow-none translate-y-0.5 translate-x-0.5 opacity-100 ring-2 ring-offset-2 ring-black' : excludedLegs.includes(num) ? 'opacity-30' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]'}`}
                                     >
-                                      {num.toString().padStart(2, "0")}
+                                      {num}
                                     </button>
                                   </div>
                                 )
@@ -1271,7 +1637,7 @@ export default function App() {
                                           onClick={() => handleToggleExcludedLeg(num)}
                                           className={`w-[40px] h-[40px] sm:w-[44px] sm:h-[44px] rounded-full border-[3px] border-zinc-300 font-black text-[22px] sm:text-[24px] leading-none pt-0.5 tracking-tighter flex items-center justify-center transition-all bg-zinc-100 text-zinc-400 relative`}
                                         >
-                                          {num.toString().padStart(2, "0")}
+                                          {num}
                                           <div className="absolute inset-x-1 top-1/2 h-[3px] bg-zinc-400 transform -translate-y-1/2 rotate-45"></div>
                                         </button>
                                       )
@@ -1283,7 +1649,7 @@ export default function App() {
                                         onClick={() => handleToggleExcludedLeg(num)}
                                         className={`w-[40px] h-[40px] sm:w-[44px] sm:h-[44px] rounded-full border-[3px] ${borderColor} font-black ${textColor} text-[22px] sm:text-[24px] leading-none pt-0.5 tracking-tighter flex items-center justify-center transition-all bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-100`}
                                       >
-                                        {num.toString().padStart(2, "0")}
+                                        {num}
                                       </button>
                                     )
                                   })}
@@ -1294,12 +1660,12 @@ export default function App() {
                                 <div className="text-sm sm:text-base font-bold text-black flex flex-wrap gap-x-3 gap-y-1 bg-zinc-50 border-2 border-black rounded-lg p-2.5">
                                   <span className="flex items-center gap-1.5">
                                     <span className="bg-black text-white px-1.5 py-0.5 rounded text-xs">膽</span> 
-                                    <span className="font-black text-[#FF4D4D]">{bankers.map(n => n.toString().padStart(2, '0')).join(', ')}</span>
+                                    <span className="font-black text-[#FF4D4D]">{bankers.map(n => n.toString()).join(', ')}</span>
                                     <span className="text-xs text-zinc-500">({bankers.length})</span>
                                   </span>
                                   <span className="flex items-center gap-1.5 flex-wrap">
                                     <span className="bg-black text-white px-1.5 py-0.5 rounded text-xs">有效配腳</span>
-                                    <span className="font-black">{activeLegs.map(n => n.toString().padStart(2, '0')).join(', ')}</span>
+                                    <span className="font-black">{activeLegs.map(n => n.toString()).join(', ')}</span>
                                     <span className="text-xs text-zinc-500">({activeLegs.length})</span>
                                   </span>
                                 </div>
@@ -1324,7 +1690,7 @@ export default function App() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-white"
+                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#ffd8a8]"
                       onClick={() => {
                         setGeneratedBets([]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1336,7 +1702,7 @@ export default function App() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3"
+                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#d2b48c]"
                       onClick={() => {
                         setGeneratedBets([]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1357,7 +1723,7 @@ export default function App() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-white"
+                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-zinc-200"
                       onClick={handleCopyBets}
                     >
                       <Copy className="w-3.5 h-3.5 mr-1" />
@@ -1366,7 +1732,7 @@ export default function App() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#a855f7] text-white"
+                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#a855f7] text-black"
                       onClick={handleCaptureScreenshot}
                     >
                       <ImageIcon className="w-3.5 h-3.5 mr-1" />
@@ -1392,8 +1758,8 @@ export default function App() {
                         <Sparkles className="w-3.5 h-3.5 mr-1" />
                         自動點擊 HKJC
                       </DialogTrigger>
-                      <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 relative flex flex-col max-h-[90vh]">
-                        <div className="p-6 sm:p-8 overflow-y-auto w-full h-full">
+                      <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 relative max-h-[90vh]">
+                        <div className="p-6 sm:p-8 overflow-y-auto w-full max-h-[90vh] custom-scrollbar">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
                             <DialogDescription className="font-bold text-black/80 text-sm sm:text-base">
@@ -1546,22 +1912,22 @@ export default function App() {
                                   w-[38px] h-[38px] sm:w-[46px] sm:h-[46px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[22px] sm:text-[26px] leading-none pt-0.5 tracking-tighter border-[3px] border-black cursor-default
                                   ${
                                     color === "red"
-                                      ? "bg-[#FF4D4D]"
+                                      ? "bg-[#FF9999]"
                                       : ""
                                   }
                                   ${
                                     color === "blue"
-                                      ? "bg-[#3b82f6]"
+                                      ? "bg-[#99CCFF]"
                                       : ""
                                   }
                                   ${
                                     color === "green"
-                                      ? "bg-[#22c55e]"
+                                      ? "bg-[#99FF99]"
                                       : ""
                                   }
                                 `}
                               >
-                                {num.toString().padStart(2, "0")}
+                                {num}
                               </div>
                             );
                           })}
@@ -1573,9 +1939,11 @@ export default function App() {
 
               </div>
             ) : (
-              <div className="h-full min-h-[500px] flex flex-col items-center bg-white border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                <div className="flex flex-col items-center mb-3 sm:mb-4 text-center">
-                  <h3 className="text-xl sm:text-2xl font-black">最近十期開獎結果</h3>
+              <div className="h-full min-h-[500px] flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center">
+                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    最近十期開獎結果
+                  </span>
                 </div>
                 
                 <div className="w-full flex-1 overflow-y-auto pr-1 space-y-2">
@@ -1593,7 +1961,7 @@ export default function App() {
                       return (
                       <div key={index} className="flex flex-col sm:flex-row items-center justify-center w-fit mx-auto bg-zinc-50 border-[3px] sm:border-[4px] border-black rounded-lg sm:rounded-xl py-1 px-1 sm:py-1.5 sm:px-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] sm:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] gap-1 sm:gap-2 mb-1.5 min-w-[280px]">
                         <div className="flex flex-col items-center min-w-[5rem]">
-                          <div className="font-black text-[12px] sm:text-base bg-black text-white px-1 sm:px-2 py-0.5 flex items-center justify-center -rotate-2 rounded whitespace-nowrap shrink-0 leading-none">
+                          <div className="font-black text-[12px] sm:text-base bg-black text-[#FFE867] px-1 sm:px-2 py-0.5 flex items-center justify-center -rotate-2 rounded whitespace-nowrap shrink-0 leading-none">
                             {displayTitle}
                           </div>
                           {dateStr && dateStr !== "Past Draw" && (
@@ -1606,7 +1974,7 @@ export default function App() {
                           {numbers.map((num, numIdx) => {
                             const isSpecial = numIdx === 6;
                             const color = getBallColor(num);
-                            const bgColor = color === "red" ? "bg-[#FF4D4D]" : color === "blue" ? "bg-[#3b82f6]" : "bg-[#22c55e]";
+                            const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
                             return (
                               <div key={numIdx} className="flex items-center gap-0 sm:gap-0.5">
                                 {isSpecial && <span className="font-black text-sm sm:text-xl text-zinc-400 px-0.5 sm:px-1">+</span>}
@@ -1674,10 +2042,19 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="max-w-[1600px] mx-auto px-4 py-6 text-center">
+      <footer className="max-w-[1600px] mx-auto px-4 py-6 text-center flex flex-col items-center gap-3">
         <p className="text-base font-black text-black">
           此系統由池記桌遊提供 版權2026
         </p>
+        <a
+          href="https://wa.me/85293737819"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 bg-[#25D366] text-black font-black px-4 py-2 rounded-full border-[3px] border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+        >
+          <MessageCircle className="w-5 h-5" />
+          <span>聯絡池記桌遊</span>
+        </a>
       </footer>
 
       <Dialog open={analysisDrawIndex !== null} onOpenChange={(open) => !open && setAnalysisDrawIndex(null)}>
@@ -1697,6 +2074,9 @@ export default function App() {
             ];
             const singleOddCount = singleSixNumbers.filter(n => n % 2 !== 0).length;
             const singleEvenCount = singleSixNumbers.filter(n => n % 2 === 0).length;
+            const singleRedCount = singleSixNumbers.filter(n => getBallColor(n) === "red").length;
+            const singleBlueCount = singleSixNumbers.filter(n => getBallColor(n) === "blue").length;
+            const singleGreenCount = singleSixNumbers.filter(n => getBallColor(n) === "green").length;
 
             // Find the start and end logic for historical tracking based on the currently selected draw.
             // Eg. if user views draw #5 (index 4) and wants 5 periods of history, we check draw #6 to #10.
@@ -1721,6 +2101,9 @@ export default function App() {
             ];
             const aggOddCount = recentNormalNumbers.filter(n => n % 2 !== 0).length;
             const aggEvenCount = recentNormalNumbers.filter(n => n % 2 === 0).length;
+            const aggRedCount = recentNormalNumbers.filter(n => getBallColor(n) === "red").length;
+            const aggBlueCount = recentNormalNumbers.filter(n => getBallColor(n) === "blue").length;
+            const aggGreenCount = recentNormalNumbers.filter(n => getBallColor(n) === "green").length;
 
             return (
               <>
@@ -1743,7 +2126,7 @@ export default function App() {
                     {drawNumbers.map((num, i) => {
                       const isSpecial = i === 6;
                       const color = getBallColor(num);
-                      const bgColor = color === "red" ? "bg-[#FF4D4D]" : color === "blue" ? "bg-[#3b82f6]" : "bg-[#22c55e]";
+                      const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
                       return (
                         <div key={i} className="flex items-center gap-1 sm:gap-2">
                           {isSpecial && <span className="font-black text-xl sm:text-2xl text-zinc-400">+</span>}
@@ -1760,7 +2143,7 @@ export default function App() {
                   {/* Single Draw Stats */}
                   <div className="flex flex-col gap-2 sm:gap-2 mb-1">
                     <h4 className="font-black text-xl sm:text-lg border-b-[3px] border-black pb-1 text-black">當期頭六碼分佈</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                         <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">大小區間分佈</span>
                         <div className="flex gap-1.5 sm:gap-1.5 text-sm sm:text-sm font-black flex-wrap">
@@ -1775,6 +2158,14 @@ export default function App() {
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
                         <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">單雙分佈</span>
                         <span className="text-xl sm:text-lg font-black">{singleOddCount} 單 : {singleEvenCount} 雙</span>
+                      </div>
+                      <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
+                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">波色分佈</span>
+                        <span className="text-xl sm:text-lg font-black flex gap-2">
+                          <span className="text-[#FF5C00]">{singleRedCount} 紅</span>
+                          <span className="text-[#3b82f6]">{singleBlueCount} 藍</span>
+                          <span className="text-[#22c55e]">{singleGreenCount} 綠</span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1803,7 +2194,7 @@ export default function App() {
                     </div>
 
                     {/* Aggregated Stats */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                         <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">
                           {recentDraws.length > 0 ? `第 ${startDisplayNumber} - ${endDisplayNumber} 期 大小分佈` : "暫無足夠歷史數據"}
@@ -1823,6 +2214,16 @@ export default function App() {
                         </span>
                         <span className="text-xl sm:text-lg font-black">{aggOddCount} 單 : {aggEvenCount} 雙</span>
                       </div>
+                      <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
+                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">
+                           {recentDraws.length > 0 ? `第 ${startDisplayNumber} - ${endDisplayNumber} 期 波色分佈` : "暫無足夠數據"}
+                        </span>
+                        <span className="text-xl sm:text-lg font-black flex gap-2">
+                          <span className="text-[#FF5C00]">{aggRedCount} 紅</span>
+                          <span className="text-[#3b82f6]">{aggBlueCount} 藍</span>
+                          <span className="text-[#22c55e]">{aggGreenCount} 綠</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1840,7 +2241,7 @@ export default function App() {
                         });
                         
                         const color = getBallColor(num);
-                        const bgColor = color === "red" ? "bg-[#FF4D4D]" : color === "blue" ? "bg-[#3b82f6]" : "bg-[#22c55e]";
+                        const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
 
                         return (
                           <div key={i} className="flex gap-2 sm:gap-2.5 items-center p-2 sm:p-2 bg-zinc-50 border-[3px] border-black rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
@@ -1919,13 +2320,13 @@ export default function App() {
                   <div className="flex gap-2.5">
                     {bet.map((num, i) => {
                       const color = getBallColor(num);
-                      const bgColor = color === "red" ? "bg-[#FF4D4D]" : color === "blue" ? "bg-[#3b82f6]" : "bg-[#22c55e]";
+                      const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
                       return (
                         <div
                           key={i}
                           className={`w-[42px] h-[42px] sm:w-[48px] sm:h-[48px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[24px] sm:text-[28px] leading-none tracking-tighter pt-0.5 border-[3px] border-black ${bgColor}`}
                         >
-                          {num.toString().padStart(2, "0")}
+                          {num}
                         </div>
                       );
                     })}
@@ -2164,9 +2565,9 @@ export default function App() {
                             const isAnyMatch = isMatchNormal || isMatchSpecial;
                             
                             const color = getBallColor(num);
-                            const winBgColor = color === "red" ? "bg-[#FF4D4D]" : color === "blue" ? "bg-[#3b82f6]" : "bg-[#22c55e]";
-                            const lightBorderColor = color === "red" ? "border-[#FF4D4D]" : color === "blue" ? "border-[#3b82f6]" : "border-[#22c55e]";
-                            const lightTextColor = color === "red" ? "text-[#FF4D4D]" : color === "blue" ? "text-[#3b82f6]" : "text-[#22c55e]";
+                            const winBgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                            const lightBorderColor = color === "red" ? "border-[#FF9999]" : color === "blue" ? "border-[#99CCFF]" : "border-[#99FF99]";
+                            const lightTextColor = color === "red" ? "text-zinc-400" : color === "blue" ? "text-zinc-400" : "text-zinc-400";
 
                             return (
                               <div
@@ -2177,7 +2578,7 @@ export default function App() {
                                     : `bg-white ${lightBorderColor} ${lightTextColor} opacity-40`
                                 }`}
                               >
-                                {num.toString().padStart(2, "0")}
+                                {num}
                                 {isMatchSpecial && (
                                   <div className="absolute -bottom-1 -right-1 text-[9px] sm:text-[10px] bg-[#FF4D4D] text-white px-1 leading-none rounded border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                                     特
