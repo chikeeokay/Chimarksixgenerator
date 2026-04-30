@@ -27,25 +27,56 @@ async function startServer() {
 
       const ai = new GoogleGenAI({ apiKey });
       
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
-              },
-              {
-                inlineData: {
-                  mimeType: mimeType,
-                  data: base64DataReplaced
+      const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      let response;
+      let lastError;
+
+      for (const model of modelsToTry) {
+        let retries = 2;
+        let delay = 1000;
+        let success = false;
+
+        while (retries > 0 && !success) {
+          try {
+            response = await ai.models.generateContent({
+              model: model,
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    {
+                      text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
+                    },
+                    {
+                      inlineData: {
+                        mimeType: mimeType,
+                        data: base64DataReplaced
+                      }
+                    }
+                  ]
                 }
-              }
-            ]
+              ]
+            });
+            success = true;
+            break;
+          } catch (error: any) {
+            lastError = error;
+            retries--;
+            console.error(`Gemini API Error with model ${model}. Retries left: ${retries}`, error.message || error);
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+              delay *= 2;
+            }
           }
-        ]
-      });
+        }
+        if (success) {
+          break;
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error("All retry attempts failed due to high demand.");
+      }
 
       let extractedText = response.text;
       if (extractedText) {
