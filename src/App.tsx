@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { GoogleGenAI } from "@google/genai";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -361,42 +360,33 @@ export default function App() {
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
       const base64DataReplaced = base64data.replace(/^data:image\/(png|jpeg|jpg|webp|heic|heif);base64,/, "");
 
-      // Frontend implementation calling Gemini directly
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY });
-
-      // Add a timeout to prevent hanging forever
-      const fetchPromise = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
-              },
-              {
-                inlineData: {
-                  data: base64DataReplaced,
-                  mimeType: mimeType
-                }
-              }
-            ]
-          }
-        ]
+      // Send to Backend API
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      
+      const response = await fetch('/api/extract-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          base64DataReplaced,
+          mimeType
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("解析超時，請重試或手動輸入")), 60000));
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as any;
-
-      const text = response.text || "";
-      let parsed;
-      try {
-        parsed = JSON.parse(text.trim());
-      } catch (err) {
-        // cleanup if it still surrounds with markdown
-        const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleaned);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to analyze image");
       }
+
+      const responseData = await response.json();
+      if (!responseData.success) {
+        throw new Error("Failed to extract numbers");
+      }
+      const parsed = responseData.bets;
 
       if (Array.isArray(parsed)) {
         const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
@@ -473,42 +463,33 @@ export default function App() {
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
       const base64DataReplaced = base64data.replace(/^data:image\/(png|jpeg|jpg|webp|heic|heif);base64,/, "");
 
-      // Frontend implementation calling Gemini directly
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY });
-
-      // Add a timeout to prevent hanging forever
-      const fetchPromise = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
-              },
-              {
-                inlineData: {
-                  data: base64DataReplaced,
-                  mimeType: mimeType
-                }
-              }
-            ]
-          }
-        ]
+      // Send to Backend API
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      
+      const response = await fetch('/api/extract-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          base64DataReplaced,
+          mimeType
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("解析超時，請重試或手動輸入")), 60000));
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as any;
-
-      const text = response.text || "";
-      let parsed;
-      try {
-        parsed = JSON.parse(text.trim());
-      } catch (err) {
-        // cleanup if it still surrounds with markdown
-        const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleaned);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to analyze image");
       }
+
+      const responseData = await response.json();
+      if (!responseData.success) {
+        throw new Error("Failed to extract numbers");
+      }
+      const parsed = responseData.bets;
 
       if (Array.isArray(parsed)) {
         const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
@@ -1762,9 +1743,9 @@ export default function App() {
                         <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
-                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2">
-                              <div>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</div>
-                              <div className="text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-lg border-2 border-[#FF4D4D]/20">註：目前暫不提供手機版自動點擊，只提供電腦版自動點擊教學。</div>
+                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                              <span>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</span>
+                              <span className="text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-lg border-2 border-[#FF4D4D]/20">註：目前暫不提供手機版自動點擊，只提供電腦版自動點擊教學。</span>
                             </DialogDescription>
                           </DialogHeader>
                           

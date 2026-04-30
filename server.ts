@@ -4,12 +4,61 @@ import path from "path";
 import fetch from "node-fetch"; // Native fetch is available in node 18+, but we use global fetch
 import * as cheerio from 'cheerio';
 import { MOCK_PAST_RESULTS } from "./lib/marksix.ts";
+import { GoogleGenAI } from "@google/genai";
 
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json({ limit: '10mb' }));
+
+  // AI Route for image processing
+  app.post("/api/extract-numbers", async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "Gemini API key is missing on the server. Please check environment variables." });
+      }
+      
+      const { base64DataReplaced, mimeType } = req.body;
+      if (!base64DataReplaced || !mimeType) {
+        return res.status(400).json({ error: "Missing image data" });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
+              },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: base64DataReplaced
+                }
+              }
+            ]
+          }
+        ]
+      });
+
+      let extractedText = response.text;
+      if (extractedText) {
+        extractedText = extractedText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const bets = JSON.parse(extractedText);
+        return res.json({ success: true, bets });
+      }
+      res.status(500).json({ error: "No response text from Gemini" });
+    } catch (e: any) {
+      console.error("AI Extraction Error:", e);
+      res.status(500).json({ error: e.message || "Unknown error during AI processing" });
+    }
+  });
 
   // API Route to fetch latest marksix results
   app.get("/api/marksix", async (req, res) => {
