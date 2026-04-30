@@ -56,7 +56,18 @@ async function startServer() {
       res.status(500).json({ error: "No response text from Gemini" });
     } catch (e: any) {
       console.error("AI Extraction Error:", e);
-      res.status(500).json({ error: e.message || "Unknown error during AI processing" });
+      let errorMessage = e.message || "Unknown error during AI processing";
+      try {
+        const parsed = JSON.parse(errorMessage);
+        if (parsed.error && parsed.error.message) {
+          errorMessage = parsed.error.message;
+        } else if (parsed.message) {
+          errorMessage = parsed.message;
+        }
+      } catch (parseError) {
+        // e.message wasn't valid JSON, which is fine
+      }
+      res.status(500).json({ error: errorMessage });
     }
   });
 
