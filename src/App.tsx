@@ -309,10 +309,7 @@ export default function App() {
     }
   };
 
-  const handleScreenshotUploadForCheck = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processScreenshotForCheck = async (file: File) => {
     setIsCheckingScreenshot(true);
     toast.loading(
       <div className="text-center w-full font-bold text-[16px] text-zinc-700">正在解析圖片中的號碼...</div>,
@@ -405,18 +402,29 @@ export default function App() {
         <div className="text-center flex-1 font-bold text-[15px] mr-4">
           {err.message || "無效圖片，請使用本系統截圖"}
         </div>,
-        { id: "check-screenshot" }
+        { 
+          id: "check-screenshot",
+          duration: 10000,
+          action: {
+            label: '重試 (Retry)',
+            onClick: () => processScreenshotForCheck(file),
+          }
+        }
       );
     } finally {
       setIsCheckingScreenshot(false);
-      e.target.value = ""; // reset input
     }
   };
 
-  const handleScreenshotUploadForRegenerate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleScreenshotUploadForCheck = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (file) {
+      processScreenshotForCheck(file);
+    }
+    e.target.value = ""; // reset input
+  };
 
+  const processScreenshotForRegenerate = async (file: File) => {
     toast.loading(
       <div className="text-center w-full font-bold text-[16px] text-zinc-700">正在解析圖片載入號碼...</div>,
       { id: "regenerate-screenshot" }
@@ -508,11 +516,24 @@ export default function App() {
         <div className="text-center flex-1 font-bold text-[15px] mr-4">
           {err.message || "無法識別號碼，請使用本系統截圖"}
         </div>,
-        { id: "regenerate-screenshot" }
+        { 
+          id: "regenerate-screenshot",
+          duration: 10000,
+          action: {
+            label: "重試 (Retry)",
+            onClick: () => processScreenshotForRegenerate(file),
+          }
+        }
       );
-    } finally {
-      e.target.value = ""; // reset input
     }
+  };
+
+  const handleScreenshotUploadForRegenerate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processScreenshotForRegenerate(file);
+    }
+    e.target.value = ""; // reset input
   };
 
   const handleCaptureScreenshot = async () => {
