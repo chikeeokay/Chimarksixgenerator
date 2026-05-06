@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import fetch from "node-fetch"; // Native fetch is available in node 18+, but we use global fetch
 import * as cheerio from 'cheerio';
@@ -8,97 +7,98 @@ import { GoogleGenAI } from "@google/genai";
 
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || "3000", 10);
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json({ limit: '10mb' }));
 
   // AI Route for image processing
   app.post("/api/extract-numbers", async (req, res) => {
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API key is missing on the server. Please check environment variables." });
-      }
-      
       const { base64DataReplaced, mimeType } = req.body;
       if (!base64DataReplaced || !mimeType) {
         return res.status(400).json({ error: "Missing image data" });
       }
 
+      // Try CUSTOM_GEMINI_KEY first as requested by the user, fallback to the default GEMINI_API_KEY
+      const apiKey = process.env.CUSTOM_GEMINI_KEY || process.env.GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: "No valid API key found. Please set CUSTOM_GEMINI_KEY in settings." });
+      }
+
       const ai = new GoogleGenAI({ apiKey });
       
-      const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-      let response;
-      let lastError;
-
-      for (const model of modelsToTry) {
-        let retries = 2;
-        let delay = 1000;
-        let success = false;
-
-        while (retries > 0 && !success) {
-          try {
-            response = await ai.models.generateContent({
-              model: model,
-              contents: [
-                {
-                  role: 'user',
-                  parts: [
-                    {
-                      text: "Extract all the lottery numbers (mark six) in the image. Return them as a JSON array of arrays, representing the bets. Each array should contain 6 numbers. For example: [[1, 2, 3, 4, 5, 6], [10, 11, 12, 13, 14, 15]]. Do NOT output any markdown blocks like ```json ... ```, ONLY output the raw JSON string.",
-                    },
-                    {
-                      inlineData: {
-                        mimeType: mimeType,
-                        data: base64DataReplaced
-                      }
-                    }
-                  ]
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `You are an OCR and data extraction expert. I am providing an image of a lottery ticket (Mark Six / 六合彩). 
+Please extract all the selected bets (combinations of numbers). 
+IMPORTANT RULES:
+1. Each bet normally consists of 6 numbers between 1 and 49.
+2. Return the result strictly as a JSON array of arrays of numbers. For example: [[8, 12, 14, 17, 27, 28], [8, 13, 16, 24, 33, 38]]. 
+3. If some rows have fewer than 6 numbers or it's a partial read, try to capture them as an array anyway.
+4. Only use numbers from the image. Do not make up numbers.
+5. If the image is blurry, try your best.
+6. Do not include any markdown formatting, only the JSON string.`
+              },
+              {
+                inlineData: {
+                  data: base64DataReplaced,
+                  mimeType: mimeType
                 }
-              ]
-            });
-            success = true;
-            break;
-          } catch (error: any) {
-            lastError = error;
-            retries--;
-            console.error(`Gemini API Error with model ${model}. Retries left: ${retries}`, error.message || error);
-            if (retries > 0) {
-              await new Promise(resolve => setTimeout(resolve, delay));
-              delay *= 2;
-            }
+              }
+            ]
           }
+        ],
+        config: {
+          responseMimeType: "application/json",
         }
-        if (success) {
-          break;
-        }
-      }
+      });
 
-      if (!response) {
-        throw lastError || new Error("All retry attempts failed due to high demand.");
-      }
-
-      let extractedText = response.text;
-      if (extractedText) {
-        extractedText = extractedText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        const bets = JSON.parse(extractedText);
-        return res.json({ success: true, bets });
-      }
-      res.status(500).json({ error: "No response text from Gemini" });
-    } catch (e: any) {
-      console.error("AI Extraction Error:", e);
-      let errorMessage = e.message || "Unknown error during AI processing";
+      const extractedText = response.text || "[]";
+      console.log("Gemini API Response:", extractedText);
+      
+      let bets = [];
       try {
-        const parsed = JSON.parse(errorMessage);
-        if (parsed.error && parsed.error.message) {
-          errorMessage = parsed.error.message;
-        } else if (parsed.message) {
-          errorMessage = parsed.message;
-        }
-      } catch (parseError) {
-        // e.message wasn't valid JSON, which is fine
+        bets = JSON.parse(extractedText);
+      } catch (e) {
+        throw new Error("Failed to parse JSON from AI: " + extractedText);
       }
-      res.status(500).json({ error: errorMessage });
+
+      if (!Array.isArray(bets)) {
+        throw new Error("AI returned a non-array");
+      }
+
+      // Cleanup bets (ensure they are arrays of 1-49 numbers)
+      let cleanedBets = [];
+      for (const bet of bets) {
+        if (!Array.isArray(bet)) continue;
+        let uniqueNums = [...new Set(bet.map((n: any) => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 49))];
+        if (uniqueNums.length >= 1) { 
+           // Pad to 6 numbers to be consistent with UI
+           let finalBet = [...uniqueNums];
+           let padNum = 1;
+           while(finalBet.length < 6) {
+             if (!finalBet.includes(padNum)) finalBet.push(padNum);
+             padNum++;
+           }
+           cleanedBets.push(finalBet.sort((a,b) => a - b));
+        }
+      }
+
+      if (cleanedBets.length > 0) {
+        return res.json({ success: true, bets: cleanedBets });
+      }
+
+      return res.status(400).json({ error: "無法在圖片中辨識出任何有效的 1-49 號碼 (No valid 1-49 numbers found in image). 原始提取文字: " + extractedText });
+
+    } catch (e: any) {
+      console.error("Endpoint Error:", e);
+      return res.status(500).json({ error: e.message || "Unknown Server Error" });
     }
   });
 
@@ -185,6 +185,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

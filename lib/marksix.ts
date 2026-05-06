@@ -33,6 +33,13 @@ export interface GenerateOptions {
   includeSpecial?: boolean; // Whether to include special numbers in recent draws
   mustInclude?: number[]; // Numbers that MUST be in every generated bet
   excludedNumbers?: number[]; // Numbers that MUST NOT be in generated bet
+  complexRecentStrategy?: {
+    enabled: boolean;
+    excludeRanges: {start: number, end: number}[];
+    includeRanges: {start: number, end: number}[];
+  };
+  excludeUnseenInRecent?: number; // Exclude numbers not seen in the last N draws
+  excludeUnseenIncludeSpecial?: boolean; // Whether to include special numbers when determining seen numbers
 }
 
 export class PartialGenerationError extends Error {
@@ -76,7 +83,29 @@ export function generateBets(options: GenerateOptions): number[][] {
     return true;
   });
 
-  if (recentMode !== "none" && recentDraws.length > 0) {
+  if (options.complexRecentStrategy?.enabled) {
+    let excludeNumbers = new Set<number>();
+    let includeNumbers = new Set<number>();
+    
+    options.complexRecentStrategy.excludeRanges.forEach(range => {
+      // range.start is 1-based, represent the N-th draw back. 
+      // max end could be anything, limit to recentDraws.length
+      const draws = recentDraws.slice(Math.max(0, range.start - 1), range.end).map(draw => includeSpecial ? draw : draw.slice(0, 6));
+      draws.flat().forEach(n => excludeNumbers.add(n));
+    });
+
+    options.complexRecentStrategy.includeRanges.forEach(range => {
+      const draws = recentDraws.slice(Math.max(0, range.start - 1), range.end).map(draw => includeSpecial ? draw : draw.slice(0, 6));
+      draws.flat().forEach(n => includeNumbers.add(n));
+    });
+
+    if (options.complexRecentStrategy.includeRanges.length > 0) {
+      pool = pool.filter(num => includeNumbers.has(num));
+    }
+    if (options.complexRecentStrategy.excludeRanges.length > 0) {
+      pool = pool.filter(num => !excludeNumbers.has(num));
+    }
+  } else if (recentMode !== "none" && recentDraws.length > 0) {
     const drawsToConsider = recentDraws.slice(0, recentCount).map(draw => includeSpecial ? draw : draw.slice(0, 6));
     const recentNumbers = new Set(drawsToConsider.flat());
     
@@ -85,6 +114,12 @@ export function generateBets(options: GenerateOptions): number[][] {
     } else if (recentMode === "include") {
       pool = pool.filter((num) => recentNumbers.has(num));
     }
+  }
+
+  if (options.excludeUnseenInRecent && options.excludeUnseenInRecent > 0 && recentDraws.length > 0) {
+    const drawsToConsider = recentDraws.slice(0, options.excludeUnseenInRecent).map(draw => options.excludeUnseenIncludeSpecial ? draw : draw.slice(0, 6));
+    const seenNumbers = new Set(drawsToConsider.flat());
+    pool = pool.filter(num => seenNumbers.has(num));
   }
 
   // If pool + mustInclude has less than 6 numbers, we can't generate a valid bet

@@ -64,6 +64,24 @@ import {
   MARK_SIX_NUMBERS,
 } from "@/lib/marksix";
 
+const parseRanges = (input: string): {start: number, end: number}[] => {
+  const ranges: {start: number, end: number}[] = [];
+  if (!input.trim()) return ranges;
+  const parts = input.split(/[,，\s]+/);
+  for (const part of parts) {
+    if (!part) continue;
+    const match = part.match(/^(\d+)(?:-(\d+))?$/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : start;
+      if (start > 0 && end >= start) {
+        ranges.push({start, end});
+      }
+    }
+  }
+  return ranges;
+};
+
 export default function App() {
   const [betCount, setBetCount] = useState<number>(6);
   const [preferredOddCount, setPreferredOddCount] = useState<number | null>(null);
@@ -81,6 +99,13 @@ export default function App() {
   const [recentMode, setRecentMode] = useState<"exclude" | "include" | "">("");
   const [recentCount, setRecentCount] = useState<number>(5);
   const [includeSpecial, setIncludeSpecial] = useState(false);
+  const [enableComplexRecent, setEnableComplexRecent] = useState(false);
+  const [complexExcludeRanges, setComplexExcludeRanges] = useState<{start: number, end: number}[]>([{start: 1, end: 5}]);
+  const [complexIncludeRanges, setComplexIncludeRanges] = useState<{start: number, end: number}[]>([{start: 6, end: 10}]);
+  const [enableExcludeUnseen, setEnableExcludeUnseen] = useState(false);
+  const [excludeUnseenCount, setExcludeUnseenCount] = useState<number>(20);
+  const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
+  const [showUnseenNumbers, setShowUnseenNumbers] = useState(false);
   const [generatedBets, setGeneratedBets] = useState<number[][]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [analysisDrawIndex, setAnalysisDrawIndex] = useState<number | null>(null);
@@ -188,7 +213,7 @@ export default function App() {
   };
 
   const handleGenerate = () => {
-    if (enableRecent && recentMode === "") {
+    if (enableRecent && recentMode === "" && !enableComplexRecent) {
       toast.error("請選擇「排除近期號碼」或「只買近期號碼」");
       return;
     }
@@ -217,6 +242,13 @@ export default function App() {
         includeSpecial,
         mustInclude: luckyNumbers,
         excludedNumbers: excludedNumbers,
+        complexRecentStrategy: {
+          enabled: enableComplexRecent,
+          excludeRanges: complexExcludeRanges,
+          includeRanges: complexIncludeRanges
+        },
+        excludeUnseenInRecent: (enableRecent || enableComplexRecent) && enableExcludeUnseen ? excludeUnseenCount : undefined,
+        excludeUnseenIncludeSpecial
       });
 
       setTimeout(() => {
@@ -325,7 +357,7 @@ export default function App() {
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            const MAX_DIMENSION = 1000;
+            const MAX_DIMENSION = 2500;
 
             if (width > height && width > MAX_DIMENSION) {
               height = Math.round((height * MAX_DIMENSION) / width);
@@ -340,8 +372,8 @@ export default function App() {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              // Compress to JPEG with 0.6 quality to drastically reduce payload size
-              resolve(canvas.toDataURL('image/jpeg', 0.6));
+// Compress to JPEG with high quality for better OCR
+              resolve(canvas.toDataURL('image/jpeg', 0.95));
             } else {
               resolve(e.target?.result as string);
             }
@@ -355,7 +387,7 @@ export default function App() {
 
       const mimeTypeMatch = base64data.match(/^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,/);
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-      const base64DataReplaced = base64data.replace(/^data:image\/(png|jpeg|jpg|webp|heic|heif);base64,/, "");
+      const base64DataReplaced = base64data.includes(",") ? base64data.split(",")[1] : base64data;
 
       // Send to Backend API
       const controller = new AbortController();
@@ -439,7 +471,7 @@ export default function App() {
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            const MAX_DIMENSION = 1000;
+            const MAX_DIMENSION = 2500;
 
             if (width > height && width > MAX_DIMENSION) {
               height = Math.round((height * MAX_DIMENSION) / width);
@@ -454,8 +486,8 @@ export default function App() {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              // Compress to JPEG with 0.6 quality to drastically reduce payload size
-              resolve(canvas.toDataURL('image/jpeg', 0.6));
+// Compress to JPEG with high quality for better OCR
+              resolve(canvas.toDataURL('image/jpeg', 0.95));
             } else {
               resolve(e.target?.result as string);
             }
@@ -469,7 +501,7 @@ export default function App() {
 
       const mimeTypeMatch = base64data.match(/^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,/);
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-      const base64DataReplaced = base64data.replace(/^data:image\/(png|jpeg|jpg|webp|heic|heif);base64,/, "");
+      const base64DataReplaced = base64data.includes(",") ? base64data.split(",")[1] : base64data;
 
       // Send to Backend API
       const controller = new AbortController();
@@ -975,20 +1007,34 @@ export default function App() {
                 <div className="space-y-0.5">
                   <div className="flex justify-between items-center">
                     <Label className="text-base font-bold">號碼範圍</Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-xs border-2 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={() => {
-                        if (ranges.length === 1) {
-                          setRanges([...ranges, {start: 1, end: 49}]);
-                        } else {
-                          setRanges([ranges[0]]);
-                        }
-                      }}
-                    >
-                      {ranges.length === 1 ? "+ 新增範圍" : "- 移除範圍"}
-                    </Button>
+                    <div className="flex gap-2">
+                      {ranges.length < 3 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs border-2 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                          onClick={() => {
+                            setRanges([...ranges, {start: 1, end: 49}]);
+                          }}
+                        >
+                          + 新增範圍
+                        </Button>
+                      )}
+                      {ranges.length > 1 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs border-2 border-[red] text-red-600 font-bold shadow-[2px_2px_0px_0px_rgba(255,0,0,0.5)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                          onClick={() => {
+                            const newRanges = [...ranges];
+                            newRanges.pop();
+                            setRanges(newRanges);
+                          }}
+                        >
+                          - 移除範圍
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {ranges.map((range, index) => (
                     <div key={index} className="space-y-1">
@@ -1366,74 +1412,316 @@ export default function App() {
 
                 {/* Past Results */}
                 <div className="space-y-1 pt-1 border-t-[3px] border-black border-dashed">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-1.5 border-b-[2px] border-black pb-1 mb-1 border-dashed w-fit">
                       <Checkbox 
                         id="enable-recent"
                         checked={enableRecent}
-                        onCheckedChange={(checked) => setEnableRecent(checked as boolean)}
+                        onCheckedChange={(checked) => {
+                          setEnableRecent(checked as boolean);
+                          if (checked) setEnableComplexRecent(false);
+                        }}
                         className="w-4 h-4 border-[3px] border-black rounded-sm data-[state=checked]:bg-[#FF4D4D] data-[state=checked]:text-white"
                       />
                       <Label htmlFor="enable-recent" className="text-[15px] font-bold cursor-pointer">啟用近期號碼策略</Label>
                     </div>
-                  </div>
-                  
-                  {enableRecent && (
-                    <div className="space-y-1 mt-0.5 flex flex-col gap-0.5">
-                      <div className="flex flex-col gap-1">
-                        <label className="flex items-center space-x-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
-                          <input 
-                            type="radio" 
-                            name="recentMode" 
-                            value="exclude" 
-                            checked={recentMode === "exclude"} 
-                            onChange={() => setRecentMode("exclude")} 
-                            className="w-3 h-3 accent-black cursor-pointer"
-                          />
-                          <span className="font-bold text-xs flex-1 select-none">排除近期號碼</span>
-                        </label>
-                        <label className="flex items-center space-x-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
-                          <input 
-                            type="radio" 
-                            name="recentMode" 
-                            value="include" 
-                            checked={recentMode === "include"} 
-                            onChange={() => setRecentMode("include")} 
-                            className="w-3 h-3 accent-black cursor-pointer"
-                          />
-                          <span className="font-bold text-xs flex-1 select-none">只買近期號碼</span>
-                        </label>
-                      </div>
 
-                      <div className="flex flex-col gap-1">
-                        <label className="flex items-center gap-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] w-fit cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
-                          <input 
-                            type="checkbox" 
-                            checked={includeSpecial} 
-                            onChange={(e) => setIncludeSpecial(e.target.checked)} 
-                            className="w-3 h-3 accent-[#3b82f6] cursor-pointer"
-                          />
-                          <span className="font-bold text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
-                        </label>
-                        <div className="flex items-center gap-1.5 w-full bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-50 transition-colors">
-                          <Slider
-                            value={recentCount}
-                            min={1}
-                            max={50}
-                            step={1}
-                            onValueChange={(val) => {
-                              const newValue = Array.isArray(val) ? val[0] : val;
-                              setRecentCount(newValue as number);
-                            }}
-                            className="py-1 cursor-pointer flex-1"
-                          />
-                          <span className="font-black text-xs sm:text-sm bg-[#FFE867] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] whitespace-nowrap select-none">
-                            參考 {recentCount || 0} 期
-                          </span>
+                    {enableRecent && (
+                      <div className="space-y-1 mt-0.5 flex flex-col gap-0.5 mb-2">
+                        <div className="flex flex-col gap-1">
+                          <label className="flex items-center space-x-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
+                            <input 
+                              type="radio" 
+                              name="recentMode" 
+                              value="exclude" 
+                              checked={recentMode === "exclude"} 
+                              onChange={() => setRecentMode("exclude")} 
+                              className="w-3 h-3 accent-black cursor-pointer"
+                            />
+                            <span className="font-bold text-xs flex-1 select-none">排除近期號碼</span>
+                          </label>
+                          <label className="flex items-center space-x-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
+                            <input 
+                              type="radio" 
+                              name="recentMode" 
+                              value="include" 
+                              checked={recentMode === "include"} 
+                              onChange={() => setRecentMode("include")} 
+                              className="w-3 h-3 accent-black cursor-pointer"
+                            />
+                            <span className="font-bold text-xs flex-1 select-none">只買近期號碼</span>
+                          </label>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <label className="flex items-center gap-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] w-fit cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
+                            <input 
+                              type="checkbox" 
+                              checked={includeSpecial} 
+                              onChange={(e) => setIncludeSpecial(e.target.checked)} 
+                              className="w-4 h-4 accent-[#3b82f6] cursor-pointer"
+                            />
+                            <span className="font-bold text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
+                          </label>
+                          <div className="flex items-center gap-1.5 w-full bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-50 transition-colors">
+                            <Slider
+                              value={[recentCount]}
+                              min={1}
+                              max={50}
+                              step={1}
+                              onValueChange={(val) => {
+                                const newValue = Array.isArray(val) ? val[0] : val;
+                                setRecentCount(newValue as number);
+                              }}
+                              className="py-1 cursor-pointer flex-1"
+                            />
+                            <span className="font-black text-xs sm:text-sm bg-[#FFE867] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] whitespace-nowrap select-none">
+                              參考 {recentCount || 0} 期
+                            </span>
+                          </div>
                         </div>
                       </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 border-b-[2px] border-black pb-1 mb-1 border-dashed w-fit">
+                      <Checkbox 
+                        id="enable-complex-recent"
+                        checked={enableComplexRecent}
+                        onCheckedChange={(checked) => {
+                          setEnableComplexRecent(checked as boolean);
+                          if (checked) setEnableRecent(false);
+                        }}
+                        className="w-4 h-4 border-[3px] border-black rounded-sm data-[state=checked]:bg-[#FF4D4D] data-[state=checked]:text-white"
+                      />
+                      <Label htmlFor="enable-complex-recent" className="text-[15px] font-bold cursor-pointer">啟用更複雜的近期號碼策略</Label>
                     </div>
-                  )}
+
+                    {enableComplexRecent && (() => {
+                      const hasOverlap = complexExcludeRanges.some(ex => 
+                        complexIncludeRanges.some(inc => 
+                          Math.max(ex.start, inc.start) <= Math.min(ex.end, inc.end)
+                        )
+                      );
+                      
+                      const maxHistoryCount = 50;
+
+                      return (
+                        <div className="space-y-4 mt-1 p-3 bg-zinc-50 border-[3px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-xl relative">
+                          <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center">
+                              <Label className="text-sm font-black flex items-center gap-1 text-[#FF4D4D]">
+                                <Dices className="w-4 h-4"/>排除近期號碼區間
+                              </Label>
+                              <div className="flex gap-1.5">
+                                {complexExcludeRanges.length < 3 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px] border-[2px] border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white"
+                                    onClick={() => setComplexExcludeRanges([...complexExcludeRanges, {start: 1, end: 5}])}
+                                  >
+                                    + 新增範圍
+                                  </Button>
+                                )}
+                                {complexExcludeRanges.length > 0 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px] border-[2px] border-[red] text-red-600 font-bold shadow-[2px_2px_0px_0px_rgba(255,0,0,0.5)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white"
+                                    onClick={() => {
+                                      const newRanges = [...complexExcludeRanges];
+                                      newRanges.pop();
+                                      setComplexExcludeRanges(newRanges);
+                                    }}
+                                  >
+                                    - 移除範圍
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {complexExcludeRanges.map((range, index) => (
+                              <div key={`exclude-${index}`} className="flex flex-col gap-1.5">
+                                <div className="flex justify-end items-center">
+                                  {complexExcludeRanges.length > 1 && <span className="text-xs font-bold text-zinc-500 mr-auto">範圍 {index + 1}</span>}
+                                  <span className="font-black text-sm bg-[#FFD700] px-2 py-0.5 border-[2px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                    {range.start} - {range.end} 期
+                                  </span>
+                                </div>
+                                <Slider
+                                  value={[range.start, range.end]}
+                                  min={1}
+                                  max={maxHistoryCount}
+                                  step={1}
+                                  onValueChange={(val) => {
+                                    const newRanges = [...complexExcludeRanges];
+                                    newRanges[index] = {start: val[0], end: val[1]};
+                                    setComplexExcludeRanges(newRanges);
+                                  }}
+                                  className="py-1 cursor-pointer mt-1"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          
+                          <div className="flex flex-col gap-2 pt-2 border-t-[2px] border-black border-dashed">
+                            <div className="flex justify-between items-center">
+                              <Label className="text-sm font-black flex items-center gap-1 text-[#3b82f6]">
+                                <Dices className="w-4 h-4"/>只買近期號碼區間
+                              </Label>
+                              <div className="flex gap-1.5">
+                                {complexIncludeRanges.length < 3 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px] border-[2px] border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white"
+                                    onClick={() => setComplexIncludeRanges([...complexIncludeRanges, {start: 1, end: 5}])}
+                                  >
+                                    + 新增範圍
+                                  </Button>
+                                )}
+                                {complexIncludeRanges.length > 0 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px] border-[2px] border-[red] text-red-600 font-bold shadow-[2px_2px_0px_0px_rgba(255,0,0,0.5)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white"
+                                    onClick={() => {
+                                      const newRanges = [...complexIncludeRanges];
+                                      newRanges.pop();
+                                      setComplexIncludeRanges(newRanges);
+                                    }}
+                                  >
+                                    - 移除範圍
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {complexIncludeRanges.map((range, index) => (
+                              <div key={`include-${index}`} className="flex flex-col gap-1.5">
+                                <div className="flex justify-end items-center">
+                                  {complexIncludeRanges.length > 1 && <span className="text-xs font-bold text-zinc-500 mr-auto">範圍 {index + 1}</span>}
+                                  <span className="font-black text-sm bg-[#FFD700] px-2 py-0.5 border-[2px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                    {range.start} - {range.end} 期
+                                  </span>
+                                </div>
+                                <Slider
+                                  value={[range.start, range.end]}
+                                  min={1}
+                                  max={maxHistoryCount}
+                                  step={1}
+                                  onValueChange={(val) => {
+                                    const newRanges = [...complexIncludeRanges];
+                                    newRanges[index] = {start: val[0], end: val[1]};
+                                    setComplexIncludeRanges(newRanges);
+                                  }}
+                                  className="py-1 cursor-pointer mt-1"
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {hasOverlap && (
+                            <div className="flex items-center gap-1.5 bg-red-100 border-[2px] border-red-500 text-red-600 text-xs font-bold p-1.5 rounded-lg mt-2">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              此設定存在重疊範圍，會排除重疊區間內的所有號碼。
+                            </div>
+                          )}
+
+                          <label className="flex items-center gap-1.5 bg-white border-[3px] border-black py-1 px-2 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] w-fit cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all mt-2">
+                            <input 
+                              type="checkbox" 
+                              checked={includeSpecial} 
+                              onChange={(e) => setIncludeSpecial(e.target.checked)} 
+                              className="w-4 h-4 accent-[#3b82f6] cursor-pointer"
+                            />
+                            <span className="font-bold text-xs sm:text-sm whitespace-nowrap select-none">連特別號碼一齊考慮</span>
+                          </label>
+                        </div>
+                      );
+                    })()}
+
+                    {(enableRecent || enableComplexRecent) && (
+                      <div className="flex flex-col gap-1 mt-2 border-t-[2px] border-black border-dashed pt-2">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Checkbox 
+                            checked={enableExcludeUnseen}
+                            onCheckedChange={(checked) => setEnableExcludeUnseen(checked as boolean)}
+                            className="w-4 h-4 border-[3px] border-black rounded-sm data-[state=checked]:bg-[#FF4D4D] data-[state=checked]:text-white"
+                          />
+                          <span className="font-bold text-xs sm:text-sm whitespace-nowrap select-none flex items-center gap-1">排除近期沒有出現過的所有號碼</span>
+                        </label>
+                        {enableExcludeUnseen && (
+                          <div className="flex flex-col gap-1.5 mb-1 w-full pl-4">
+                            <div className="flex items-center gap-1.5 w-[calc(100%-1rem)] bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-50 transition-colors">
+                              <Slider
+                                value={[excludeUnseenCount]}
+                                min={1}
+                                max={50}
+                                step={1}
+                                onValueChange={(val) => {
+                                  const newValue = Array.isArray(val) ? val[0] : val;
+                                  setExcludeUnseenCount(newValue as number);
+                                }}
+                                className="py-1 cursor-pointer flex-1"
+                              />
+                              <span className="font-black text-xs sm:text-sm bg-[#FFE867] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] whitespace-nowrap select-none">
+                                參考 {excludeUnseenCount || 0} 期
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1.5 ml-1 mb-1.5 w-fit">
+                              <label className="flex items-center gap-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
+                                <input 
+                                  type="checkbox" 
+                                  checked={excludeUnseenIncludeSpecial} 
+                                  onChange={(e) => setExcludeUnseenIncludeSpecial(e.target.checked)} 
+                                  className="w-4 h-4 accent-[#3b82f6] cursor-pointer"
+                                />
+                                <span className="font-bold text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
+                              </label>
+                            </div>
+                            
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="w-fit h-7 text-[11px] font-bold border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all ml-1"
+                              onClick={() => setShowUnseenNumbers(!showUnseenNumbers)}
+                            >
+                              {showUnseenNumbers ? "隱藏沒有出現過的號碼" : "顯示沒有出現過的號碼"}
+                            </Button>
+                            
+                            {showUnseenNumbers && (() => {
+                              if (liveResults.length === 0) return <div className="text-xs text-zinc-500 font-bold ml-1">載入中...</div>;
+                              const rawRecentDraws = liveResults.map(getRawDrawNumbers);
+                              const drawsToConsider = rawRecentDraws.slice(0, excludeUnseenCount).map(draw => excludeUnseenIncludeSpecial ? draw : draw.slice(0, 6));
+                              const seenNumbers = new Set(drawsToConsider.flat());
+                              const unseenNumbers = MARK_SIX_NUMBERS.filter(num => !seenNumbers.has(num));
+
+                              return (
+                                <div className="mt-1 mr-4 p-2.5 bg-white border-[3px] border-black rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                  <div className="text-xs font-black mb-2 text-zinc-700">此 {excludeUnseenCount} 期沒有出現過的號碼 (共 {unseenNumbers.length} 個):</div>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {unseenNumbers.map(n => {
+                                      const color = getBallColor(n);
+                                      const bgClass = color === 'red' ? 'bg-red-100/80 border-red-500 text-red-700' : 
+                                                      color === 'blue' ? 'bg-blue-100/80 border-blue-500 text-blue-700' : 
+                                                      'bg-green-100/80 border-green-500 text-green-700';
+                                                      
+                                      return (
+                                        <span key={n} className={`flex items-center justify-center w-7 h-7 rounded-full border-[2px] font-black text-xs shadow-sm ${bgClass}`}>
+                                          {n}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
               <CardFooter className="bg-zinc-100 border-t-[3px] border-black py-2 px-3 sm:py-3 sm:px-4 m-0 rounded-none w-full flex flex-col justify-center gap-3 mt-auto">
