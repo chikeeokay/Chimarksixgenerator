@@ -435,7 +435,7 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       toast.error(
-        <div className="text-center flex-1 font-bold text-[15px] mr-4">
+        <div className="text-left flex-1 font-bold text-[15px] mr-4 whitespace-pre-wrap break-words">
           {err.message || "無效圖片，請使用本系統截圖"}
         </div>,
         { 
@@ -550,7 +550,7 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       toast.error(
-        <div className="text-center flex-1 font-bold text-[15px] mr-4">
+        <div className="text-left flex-1 font-bold text-[15px] mr-4 whitespace-pre-wrap break-words">
           {err.message || "無法識別號碼，請使用本系統截圖"}
         </div>,
         { 
@@ -2525,8 +2525,8 @@ export default function App() {
               生成提示
             </DialogTitle>
           </DialogHeader>
-          <div className="p-6 bg-white">
-            <div className="text-lg font-bold text-black whitespace-pre-line leading-relaxed">
+          <div className="p-6 bg-white shrink-0 min-h-[100px] max-h-[60vh] overflow-y-auto">
+            <div className="text-lg font-bold text-black whitespace-pre-wrap break-words leading-relaxed text-left">
               {errorModal?.message}
             </div>
           </div>

@@ -98,7 +98,14 @@ IMPORTANT RULES:
 
     } catch (e: any) {
       console.error("Endpoint Error:", e);
-      return res.status(500).json({ error: e.message || "Unknown Server Error" });
+      let errorMessage = e.message || "Unknown Server Error";
+      
+      // Check for Gemini API location block
+      if (typeof errorMessage === 'string' && errorMessage.includes('User location is not supported')) {
+        errorMessage = "伺服器所在的地區（可能為香港或新加坡）不支援 Google Gemini API。\n\n請在 Render 的設定中，將 Web Service 重新部署到美國（如 Oregon 或 Ohio）或歐洲（如 Frankfurt）地區即可解決此問題。";
+      }
+
+      return res.status(500).json({ error: errorMessage });
     }
   });
 
