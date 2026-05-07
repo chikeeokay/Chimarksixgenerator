@@ -444,10 +444,6 @@ export default function App() {
           action: {
             label: '重試 (Retry)',
             onClick: () => processScreenshotForCheck(file),
-          },
-          cancel: {
-            label: '關閉',
-            onClick: () => {},
           }
         }
       );
@@ -563,10 +559,6 @@ export default function App() {
           action: {
             label: "重試 (Retry)",
             onClick: () => processScreenshotForRegenerate(file),
-          },
-          cancel: {
-            label: '關閉',
-            onClick: () => {},
           }
         }
       );
@@ -2855,7 +2847,7 @@ export default function App() {
         </DialogContent>
       </Dialog>
 
-      <Toaster position="top-center" toastOptions={{
+      <Toaster position="top-center" closeButton toastOptions={{
         classNames: {
           toast: "group !bg-white data-[type=success]:!bg-[#FFE867] !border-[3px] !border-black !rounded-2xl !shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] sm:!border-4 sm:!shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black font-black text-[15px] sm:text-lg px-4 py-3 sm:px-5 sm:py-4 flex gap-3 w-full items-start",
           title: "font-black text-black",
