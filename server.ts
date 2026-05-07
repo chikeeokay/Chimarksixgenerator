@@ -9,6 +9,14 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+  // Redirect old domain to new domain
+  app.use((req, res, next) => {
+    if (req.hostname === 'chimarksixgenerator.onrender.com') {
+      return res.redirect(301, 'https://chimarksixgenerator1.onrender.com' + req.originalUrl);
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '10mb' }));
 
   // AI Route for image processing
@@ -102,7 +110,7 @@ IMPORTANT RULES:
       
       // Check for Gemini API location block
       if (typeof errorMessage === 'string' && errorMessage.includes('User location is not supported')) {
-        errorMessage = "伺服器所在的地區（可能為香港或新加坡）不支援 Google Gemini API。\n\n請在 Render 的設定中，將 Web Service 重新部署到美國（如 Oregon 或 Ohio）或歐洲（如 Frankfurt）地區即可解決此問題。";
+        errorMessage = "伺服器所在的地區不支援 Google Gemini API（Google 近期加強了對香港等地區的限制，導致原先可用的伺服器失效）。\n\n解決方案：\n1. 請在 Render 上「建立一個全新的 Web Service」，於 Region 選擇美國 (Oregon/Ohio) 或歐洲 (Frankfurt)。\n2. 將您的自訂網域綁定到新服務，這樣您的用戶就完全不受網址改變影響！\n\n【在 Render 設定 custom domain 教學】\n- 前往新 Web Service 的「Settings」頁面，找到「Custom Domains」板塊。\n- 輸入您的網域 `chikeechi.com` 並點擊「Add Domain」。\n- Render 會提供一組 DNS 紀錄（通常是 CNAME 或 A Record）。\n- 登入您的網域供應商 (例如 Cloudflare, GoDaddy 等)，在 DNS 設定中加入該組紀錄。\n- 等待生效後，您就可以繼續用原來的網址運作了！\n\n(註：只要伺服器位於支援地區，香港本地用戶即可正常使用，完全不需要 VPN！)";
       }
 
       return res.status(500).json({ error: errorMessage });
