@@ -57,6 +57,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toPng } from "html-to-image";
+import { QRCodeSVG } from 'qrcode.react';
+import jsQR from 'jsqr';
 import {
   generateBets,
   getBallColor,
@@ -353,6 +355,54 @@ export default function App() {
     );
 
     try {
+      // 1. Try QR Code First
+      const qrData = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0);
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              try {
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                resolve(code ? code.data : null);
+              } catch(e) {
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = e.target?.result as string;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+
+      if (qrData) {
+        let validBets: number[][] = [];
+        try {
+          const parsed = JSON.parse(qrData);
+          if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
+             validBets = parsed;
+          }
+        } catch(e) {}
+        
+        if (validBets.length > 0) {
+          handlePerformCheck(validBets);
+          toast.success(<div className="text-center flex-1 font-bold text-xl">成功讀取號碼！</div>, { id: "check-screenshot" });
+          setIsCheckingScreenshot(false);
+          return;
+        }
+      }
+
+      // 2. Fallback to API if QR not found or invalid
       const base64data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -435,16 +485,19 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       toast.error(
-        <div className="text-left flex-1 font-bold text-[15px] mr-4 whitespace-pre-wrap break-words">
-          {err.message || "無效圖片，請使用本系統截圖"}
+        <div className="flex flex-col gap-3 w-full">
+          <div className="text-left font-bold text-[15px] whitespace-pre-wrap break-words">
+            {err.message || "無效圖片，請使用本系統截圖"}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1" variant="outline" onClick={() => processScreenshotForCheck(file)}>
+              重試 API
+            </Button>
+          </div>
         </div>,
         { 
           id: "check-screenshot",
-          duration: 10000,
-          action: {
-            label: '重試 (Retry)',
-            onClick: () => processScreenshotForCheck(file),
-          }
+          duration: 10000
         }
       );
     } finally {
@@ -452,13 +505,7 @@ export default function App() {
     }
   };
 
-  const handleScreenshotUploadForCheck = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processScreenshotForCheck(file);
-    }
-    e.target.value = ""; // reset input
-  };
+  // removed old handlers
 
   const processScreenshotForRegenerate = async (file: File) => {
     toast.loading(
@@ -467,6 +514,55 @@ export default function App() {
     );
 
     try {
+      // 1. Try QR code first
+      const qrData = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0);
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              try {
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                resolve(code ? code.data : null);
+              } catch(e) {
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = e.target?.result as string;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+
+      if (qrData) {
+        let validBets: number[][] = [];
+        try {
+          const parsed = JSON.parse(qrData);
+          if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
+             validBets = parsed;
+          }
+        } catch(e) {}
+        
+        if (validBets.length > 0) {
+          setGeneratedBets(validBets);
+          setUndoStack([]);
+          setIsHkjcDialogOpen(false);
+          toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
+          return;
+        }
+      }
+
+      // 2. Fallback to API if QR fails
       const base64data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -540,7 +636,7 @@ export default function App() {
         if (validBets.length > 0) {
           setGeneratedBets(validBets);
           setUndoStack([]);
-          toast.success(<div className="text-center flex-1 font-bold">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
+          toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
         } else {
           throw new Error("無法識別號碼，請使用本系統截圖");
         }
@@ -550,28 +646,25 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       toast.error(
-        <div className="text-left flex-1 font-bold text-[15px] mr-4 whitespace-pre-wrap break-words">
-          {err.message || "無法識別號碼，請使用本系統截圖"}
+        <div className="flex flex-col gap-3 w-full">
+          <div className="text-left font-bold text-[15px] whitespace-pre-wrap break-words">
+            {err.message || "無法識別號碼，請使用本系統截圖"}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1" variant="outline" onClick={() => processScreenshotForRegenerate(file)}>
+              重試 API
+            </Button>
+          </div>
         </div>,
         { 
           id: "regenerate-screenshot",
-          duration: 10000,
-          action: {
-            label: "重試 (Retry)",
-            onClick: () => processScreenshotForRegenerate(file),
-          }
+          duration: 10000
         }
       );
     }
   };
 
-  const handleScreenshotUploadForRegenerate = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processScreenshotForRegenerate(file);
-    }
-    e.target.value = ""; // reset input
-  };
+  // removed old handlers
 
   const handleCaptureScreenshot = async () => {
     const captureArea = document.getElementById('capture-area');
@@ -613,6 +706,48 @@ export default function App() {
       document.body.removeChild(a);
       
       toast.success("成功儲存圖片！", { id: "capture-toast" });
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`截圖失敗: ${e?.message || '未知錯誤'}`, { id: "capture-toast" });
+    }
+  };
+
+  const handleCaptureOCRScreenshot = async () => {
+    const captureArea = document.getElementById('capture-area-ocr');
+    if (!captureArea) return;
+    
+    toast.loading("準備 OCR 專用圖片中...", { id: "capture-toast" });
+
+    try {
+      const options = {
+        pixelRatio: 2, // High resolution
+        backgroundColor: '#ffffff',
+        width: captureArea.offsetWidth,
+        height: captureArea.offsetHeight,
+        cacheBust: true,
+        style: {
+          transform: 'none',
+        }
+      };
+
+      // Warm up call
+      await toPng(captureArea, options).catch(() => {});
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      const dataUrl = await toPng(captureArea, options);
+
+      if (!dataUrl || dataUrl.length < 5000) {
+        throw new Error("截圖資料異常，可能是畫面尚未準備好，請重試");
+      }
+
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `marksix-ocr-numbers-${new Date().toISOString().slice(0,10)}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      toast.success("成功儲存 OCR 專用圖片！", { id: "capture-toast" });
     } catch (e: any) {
       console.error(e);
       toast.error(`截圖失敗: ${e?.message || '未知錯誤'}`, { id: "capture-toast" });
@@ -1753,21 +1888,24 @@ export default function App() {
                   核對中獎號碼
                 </Button>
 
-                <div className="flex flex-col sm:flex-row gap-2 w-full justify-center mt-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full justify-center mt-2 flex-wrap">
                   <Button
                     variant="outline"
-                    className="flex-1 max-w-sm bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    onClick={() => document.getElementById('regenerate-upload')?.click()}
+                    className="flex-1 min-w-[200px] bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-2 px-3 text-base sm:text-lg font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                    onClick={() => document.getElementById('regenerate-api-upload')?.click()}
                   >
-                    <Upload className="w-4 h-4 mr-1.5" />
-                    上載本系統之前生成了的號碼截圖重新生成
+                    上載系統截圖重新生成
                   </Button>
                   <input 
                     type="file" 
-                    id="regenerate-upload" 
+                    id="regenerate-api-upload" 
                     className="hidden" 
                     accept="image/*"
-                    onChange={handleScreenshotUploadForRegenerate}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) processScreenshotForRegenerate(file);
+                      e.target.value = "";
+                    }}
                   />
 
                   {generatedBets.length > 0 && (
@@ -2037,24 +2175,28 @@ export default function App() {
                       <RefreshCw className="w-3.5 h-3.5 mr-1" />
                       重新生成
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-zinc-200"
-                      onClick={handleCopyBets}
-                    >
-                      <Copy className="w-3.5 h-3.5 mr-1" />
-                      複製號碼
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#a855f7] text-black"
-                      onClick={handleCaptureScreenshot}
-                    >
-                      <ImageIcon className="w-3.5 h-3.5 mr-1" />
-                      儲存生成結果圖片
-                    </Button>
+                    <div className="flex w-full sm:w-auto gap-1.5 sm:gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-0 border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-zinc-200"
+                        onClick={handleCopyBets}
+                      >
+                        <Copy className="w-3.5 h-3.5 mr-1" />
+                        複製號碼
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 w-full border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full min-h-[32px] h-auto py-1.5 px-3 bg-zinc-800 text-white hover:text-white break-words items-center"
+                        onClick={handleCaptureScreenshot}
+                      >
+                        <div className="flex flex-col items-center leading-tight">
+                          <span className="flex items-center whitespace-nowrap"><ImageIcon className="w-3.5 h-3.5 mr-1" />儲存生成結果圖片</span>
+                          <span className="text-[10px] sm:text-xs opacity-90 mt-0.5">(內含 QR Code 方便再次對獎)</span>
+                        </div>
+                      </Button>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
@@ -2517,6 +2659,7 @@ export default function App() {
         </DialogContent>
       </Dialog>
 
+
       <Dialog open={!!errorModal} onOpenChange={(open) => !open && setErrorModal(null)}>
         <DialogContent className="sm:max-w-md border-[4px] border-black rounded-[24px] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-0 overflow-hidden bg-white">
           <DialogHeader className="bg-[#FF4D4D] border-b-4 border-black p-6">
@@ -2563,7 +2706,7 @@ export default function App() {
             {generatedBets.map((bet, index) => (
               <div key={index} className="flex items-center w-full bg-white border-[4px] border-black rounded-3xl h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-2 relative overflow-visible">
                 <div className="flex items-center gap-1 w-full justify-between pr-2">
-                  <div className="text-2xl font-black text-black w-12 text-center transform -rotate-[10deg] shrink-0">
+                  <div className="text-2xl font-black text-black w-12 text-center transform -rotate-[10deg] shrink-0 opacity-80">
                     #{index + 1}
                   </div>
                   <div className="flex gap-2.5">
@@ -2584,7 +2727,11 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div className="mt-8 mb-2 text-zinc-400 text-[15px] font-bold tracking-widest">
+          <div className="mt-8 mb-4 p-4 bg-white rounded-2xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center">
+            <QRCodeSVG value={JSON.stringify(generatedBets)} size={160} />
+            <div className="mt-3 text-sm font-black text-black">快速對獎・SCAN ME</div>
+          </div>
+          <div className="mb-2 text-[#FFE867] text-[15px] font-bold tracking-widest">
             此號碼生成系統由池記桌遊提供
           </div>
         </div>
@@ -2653,26 +2800,36 @@ export default function App() {
                 </TabsList>
 
                 <TabsContent value="upload" className="mt-0">
-                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 border-[4px] border-dashed border-[#FF4D4D] rounded-2xl bg-[#FFE867] text-center hover:bg-[#FFD700] hover:border-black cursor-pointer transition-all relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleScreenshotUploadForCheck}
-                      disabled={isCheckingScreenshot}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" 
-                    />
-                    <div className="bg-white rounded-full p-3 border-[3px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-3 group-hover:scale-110 transition-transform">
-                      {isCheckingScreenshot ? (
-                        <RefreshCw className="w-8 h-8 animate-spin text-[#3b82f6]" />
-                      ) : (
-                        <Upload className="w-8 h-8 text-[#FF4D4D]" />
-                      )}
-                    </div>
-                    <p className="font-black text-xl text-black uppercase tracking-wide">點擊或拖曳上傳截圖</p>
-                    
-                    <div className="mt-3 text-[13px] sm:text-sm font-black bg-white text-black px-3 py-1.5 border-[3px] border-black rounded-lg transform -rotate-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] inline-block">
-                      ⚠️ 必需提供之前由<span className="text-[#3b82f6]">本系統下載</span>的截圖
+                  <div className="flex flex-col gap-4">
+                    {/* Upload Zone */}
+                    <div className="flex flex-col items-center justify-center p-4 sm:p-6 border-[4px] border-dashed border-[#FF4D4D] rounded-2xl bg-[#FFE867] text-center hover:bg-[#FFD700] hover:border-black cursor-pointer transition-all relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
+                      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) processScreenshotForCheck(file);
+                          e.target.value = "";
+                        }}
+                        disabled={isCheckingScreenshot}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" 
+                      />
+                      <div className="bg-white rounded-full p-2 border-[3px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-2 group-hover:scale-110 transition-transform">
+                        {isCheckingScreenshot ? (
+                          <RefreshCw className="w-6 h-6 animate-spin text-[#3b82f6]" />
+                        ) : (
+                          <Upload className="w-6 h-6 text-[#FF4D4D]" />
+                        )}
+                      </div>
+                      <div className="font-black text-xl sm:text-2xl text-black tracking-wide mt-1 flex flex-col items-center">
+                        <div>上傳系統截圖</div>
+                        <div className="text-xs sm:text-sm opacity-75">準確率高・可能需要幾秒鐘</div>
+                      </div>
+                      
+                      <div className="mt-2 text-[12px] sm:text-[13px] font-black bg-white text-black px-2 py-1 border-[3px] border-black rounded-lg transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] inline-block">
+                        ⚠️ 必需由<span className="text-[#3b82f6]">本系統下載</span>
+                      </div>
                     </div>
                   </div>
                 </TabsContent>

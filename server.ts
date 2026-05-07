@@ -67,8 +67,11 @@ IMPORTANT RULES:
         }
       });
 
-      const extractedText = response.text || "[]";
+      let extractedText = response.text || "[]";
       console.log("Gemini API Response:", extractedText);
+      
+      // Strip markdown codeblocks
+      extractedText = extractedText.replace(/^```json\n/, "").replace(/^```\n/, "").replace(/\n```$/, "");
       
       let bets = [];
       try {
