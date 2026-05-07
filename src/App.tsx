@@ -440,10 +440,14 @@ export default function App() {
         </div>,
         { 
           id: "check-screenshot",
-          duration: Infinity,
+          duration: 10000,
           action: {
             label: '重試 (Retry)',
             onClick: () => processScreenshotForCheck(file),
+          },
+          cancel: {
+            label: '關閉',
+            onClick: () => {},
           }
         }
       );
@@ -555,10 +559,14 @@ export default function App() {
         </div>,
         { 
           id: "regenerate-screenshot",
-          duration: Infinity,
+          duration: 10000,
           action: {
             label: "重試 (Retry)",
             onClick: () => processScreenshotForRegenerate(file),
+          },
+          cancel: {
+            label: '關閉',
+            onClick: () => {},
           }
         }
       );
