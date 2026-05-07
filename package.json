@@ -25,6 +25,7 @@
     "express": "^4.22.1",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
+    "iconv-lite": "^0.7.2",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

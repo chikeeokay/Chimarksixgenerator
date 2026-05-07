@@ -117,62 +117,103 @@ IMPORTANT RULES:
   // API Route to fetch latest marksix results
   app.get("/api/marksix", async (req, res) => {
     try {
-      const response = await fetch('https://marksixinfo.com/latest20draws');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch from marksixinfo.com: ${response.status}`);
-      }
-      const html = await response.text();
-      const $ = cheerio.load(html);
-      
-      const numDivs: number[] = [];
-      $('*').each((i, el) => {
-        const text = $(el).text().trim();
-        if (/^\d{1,2}$/.test(text) && $(el).children().length === 0) {
-          const num = parseInt(text, 10);
-          if (num >= 1 && num <= 49) {
-            numDivs.push(num);
-          }
-        }
-      });
-      
-      const dateTextRegex = /\d{4}-\d{2}-\d{2}/;
-      const allTexts = $('*').map((i, el) => $(el).text().trim()).get();
-      const dates = allTexts.filter(text => dateTextRegex.test(text)).filter(text => text.length === 10); // Find YYYY-MM-DD
-      const uniqueDates = [...new Set(dates)].map(d => {
-        const parts = d.split('-');
-        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-        return d;
-      });
-
-      // Each draw consists of 7 numbers (6 normal + 1 special)
       const draws: {numbers: number[], date: string}[] = [];
       const seen = new Set<string>();
 
-      for (let i = 0; i < numDivs.length; i += 7) {
-        if (i + 7 <= numDivs.length) {
-          const draw = numDivs.slice(i, i + 7);
-          const drawStr = draw.join(',');
-          if (!seen.has(drawStr)) {
-            seen.add(drawStr);
-            const date = uniqueDates[draws.length] || "";
-            draws.push({numbers: draw, date});
-          }
-        }
-      }
-
-      // Try fetching from HKJC as a fallback
       try {
-        const hkjcRes = await fetch('https://bet.hkjc.com/marksix/getJSON.aspx?sd=20250101&ed=20261231', {
+        const iconv = await import("iconv-lite");
+        const lottoRes = await fetch("https://www.lotto-8.com/listltohk.asp", {
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
           }
         });
-        if (hkjcRes.ok) {
-          const hkjcData = await hkjcRes.json();
-          // Merge HKJC data if format allows
+        if (lottoRes.ok) {
+          const buffer = await lottoRes.arrayBuffer();
+          const lottoHtml = iconv.default.decode(Buffer.from(buffer), 'big5');
+          const $ = cheerio.load(lottoHtml);
+          
+          let currentDate = "";
+          let currentNums: number[] = [];
+          
+          // Parse lotto-8 layout
+          // They use table rows or divs containing the date and then the numbers
+          $('*').each((i, el) => {
+             const t = $(el).text().trim();
+             // Match date like 2026/05/07
+             if (/^\d{4}\/\d{2}\/\d{2}$/.test(t) && $(el).children().length === 0) {
+                 if (currentNums.length === 7 && currentDate) {
+                     const drawStr = currentNums.join(',');
+                     if (!seen.has(drawStr)) {
+                         seen.add(drawStr);
+                         draws.push({ numbers: currentNums, date: currentDate });
+                     }
+                 }
+                 currentDate = t;
+                 currentNums = [];
+             } else if (/^\d{2}$/.test(t) && currentDate && $(el).children().length === 0) {
+                 const n = parseInt(t, 10);
+                 if (n >= 1 && n <= 49) {
+                     currentNums.push(n);
+                 }
+                 if (currentNums.length === 7) {
+                     const drawStr = currentNums.join(',');
+                     if (!seen.has(drawStr)) {
+                         seen.add(drawStr);
+                         draws.push({ numbers: currentNums, date: currentDate });
+                     }
+                     currentDate = "";
+                     currentNums = [];
+                 }
+             }
+          });
         }
-      } catch (e) {
-        // Ignore HKJC errors
+      } catch(lottoErr) {
+        console.error("Lotto-8 scrape failed:", lottoErr);
+      }
+
+      // Try fetching from marksixinfo.com as fallback
+      try {
+        const response = await fetch('https://marksixinfo.com/latest20draws');
+        if (response.ok) {
+          const html = await response.text();
+          const $ = cheerio.load(html);
+          
+          const numDivs: number[] = [];
+          $('*').each((i, el) => {
+            const text = $(el).text().trim();
+            if (/^\d{1,2}$/.test(text) && $(el).children().length === 0) {
+              const num = parseInt(text, 10);
+              if (num >= 1 && num <= 49) {
+                numDivs.push(num);
+              }
+            }
+          });
+          
+          const dateTextRegex = /\d{4}-\d{2}-\d{2}/;
+          const allTexts = $('*').map((i, el) => $(el).text().trim()).get();
+          const dates = allTexts.filter(text => dateTextRegex.test(text)).filter(text => text.length === 10); // Find YYYY-MM-DD
+          const uniqueDates = [...new Set(dates)].map(d => {
+            const parts = d.split('-');
+            if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]}`; // Changed to YYYY/MM/DD format to match lotto-8
+            return d;
+          });
+
+          for (let i = 0; i < numDivs.length; i += 7) {
+            if (i + 7 <= numDivs.length) {
+              const draw = numDivs.slice(i, i + 7);
+              const drawStr = draw.join(',');
+              if (!seen.has(drawStr)) {
+                seen.add(drawStr);
+                // Math index based roughly relative to how many we parsed, but uniqueDates should align if we assume first goes with first
+                const dateIdx = (i/7);
+                const date = uniqueDates[dateIdx] || "";
+                draws.push({numbers: draw, date});
+              }
+            }
+          }
+        }
+      } catch (marksixErr) {
+        console.error("Marksixinfo scrape failed:", marksixErr);
       }
 
       // Fallback Dates
@@ -188,6 +229,24 @@ IMPORTANT RULES:
         }
       }
       
+      // Sort draws by date descending
+      draws.sort((a, b) => {
+         const parseDate = (d: string) => {
+           const parts = d.split(/[/|-]/);
+           if (parts.length === 3) {
+             if (parts[0].length === 4) {
+               // YYYY/MM/DD
+               return new Date(`${parts[0]}-${parts[1]}-${parts[2]}`).getTime();
+             } else {
+               // DD/MM/YYYY
+               return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+             }
+           }
+           return new Date(d).getTime() || 0;
+         };
+         return parseDate(b.date) - parseDate(a.date);
+      });
+
       res.json({ success: true, draws });
     } catch (error: any) {
       console.error("Error fetching Mark Six info:", error);
