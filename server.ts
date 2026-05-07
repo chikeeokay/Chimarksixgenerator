@@ -9,14 +9,6 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-  // Redirect old domain to new domain
-  app.use((req, res, next) => {
-    if (req.hostname === 'chimarksixgenerator.onrender.com') {
-      return res.redirect(301, 'https://chimarksixgenerator1.onrender.com' + req.originalUrl);
-    }
-    next();
-  });
-
   app.use(express.json({ limit: '10mb' }));
 
   // AI Route for image processing
