@@ -53,6 +53,8 @@ import {
   SearchCheck,
   RotateCcw,
   MessageCircle,
+  Undo,
+  Trash2,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import {
@@ -107,6 +109,7 @@ export default function App() {
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
   const [showUnseenNumbers, setShowUnseenNumbers] = useState(false);
   const [generatedBets, setGeneratedBets] = useState<number[][]>([]);
+  const [undoStack, setUndoStack] = useState<{index: number, bet: number[]}[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [analysisDrawIndex, setAnalysisDrawIndex] = useState<number | null>(null);
   const [analysisRangeCount, setAnalysisRangeCount] = useState<number>(5);
@@ -253,6 +256,7 @@ export default function App() {
 
       setTimeout(() => {
         setGeneratedBets(bets);
+        setUndoStack([]);
         setIsGenerating(false);
       }, 400); // Fake loading for better UX
     } catch (error: any) {
@@ -535,6 +539,7 @@ export default function App() {
         const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
         if (validBets.length > 0) {
           setGeneratedBets(validBets);
+          setUndoStack([]);
           toast.success(<div className="text-center flex-1 font-bold">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
         } else {
           throw new Error("無法識別號碼，請使用本系統截圖");
@@ -933,6 +938,7 @@ export default function App() {
               className="border-[3px] border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] sm:border-4 sm:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 sm:hover:translate-y-1 sm:hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:py-1.5 sm:px-3 text-xs sm:text-sm bg-orange-400 hover:bg-orange-500 text-black border-black/80"
               onClick={() => {
                 setGeneratedBets([]);
+                setUndoStack([]);
                 setBankers([]);
                 setAnalysisDrawIndex(null);
                 setExcludedLegs([]);
@@ -1983,6 +1989,7 @@ export default function App() {
                       className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#ffd8a8]"
                       onClick={() => {
                         setGeneratedBets([]);
+                        setUndoStack([]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                     >
@@ -1995,12 +2002,32 @@ export default function App() {
                       className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#d2b48c]"
                       onClick={() => {
                         setGeneratedBets([]);
+                        setUndoStack([]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                     >
                       <Settings2 className="w-3.5 h-3.5 mr-1" />
                       更改設定
                     </Button>
+                    {undoStack.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#ffb6c1] text-black"
+                        onClick={() => {
+                          const lastAction = undoStack[undoStack.length - 1];
+                          setUndoStack(prev => prev.slice(0, -1));
+                          setGeneratedBets(prev => {
+                            const newBets = [...prev];
+                            newBets.splice(lastAction.index, 0, lastAction.bet);
+                            return newBets;
+                          });
+                        }}
+                      >
+                        <Undo className="w-3.5 h-3.5 mr-1" />
+                        復原 ({undoStack.length})
+                      </Button>
+                    )}
                     <Button
                       variant="default"
                       size="sm"
@@ -2144,6 +2171,15 @@ export default function App() {
                             );
                           })}
                         </div>
+                        <button
+                          onClick={() => {
+                            setUndoStack(prev => [...prev, { index, bet: generatedBets[index] }]);
+                            setGeneratedBets(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] shrink-0 rounded-full flex items-center justify-center bg-zinc-200 hover:bg-red-400 text-black border-2 border-black ml-1 mr-1 transition-colors hover:scale-105"
+                        >
+                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2505,6 +2541,7 @@ export default function App() {
               <Button
                 onClick={() => {
                   setGeneratedBets(errorModal.partialBets!);
+                  setUndoStack([]);
                   setErrorModal(null);
                 }}
                 className="w-full bg-[#FFE867] hover:bg-[#FFD700] text-black border-4 border-black font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-xl h-12 text-lg"
