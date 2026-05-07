@@ -440,7 +440,7 @@ export default function App() {
         </div>,
         { 
           id: "check-screenshot",
-          duration: 10000,
+          duration: Infinity,
           action: {
             label: '重試 (Retry)',
             onClick: () => processScreenshotForCheck(file),
@@ -555,7 +555,7 @@ export default function App() {
         </div>,
         { 
           id: "regenerate-screenshot",
-          duration: 10000,
+          duration: Infinity,
           action: {
             label: "重試 (Retry)",
             onClick: () => processScreenshotForRegenerate(file),

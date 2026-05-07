@@ -111,6 +111,8 @@ IMPORTANT RULES:
       // Check for Gemini API location block
       if (typeof errorMessage === 'string' && errorMessage.includes('User location is not supported')) {
         errorMessage = "伺服器所在的地區不支援 Google Gemini API（Google 近期加強了對香港等地區的限制，導致原先可用的伺服器失效）。\n\n解決方案：\n1. 請在 Render 上「建立一個全新的 Web Service」，於 Region 選擇美國 (Oregon/Ohio) 或歐洲 (Frankfurt)。\n2. 將您的自訂網域綁定到新服務，這樣您的用戶就完全不受網址改變影響！\n\n【在 Render 設定 custom domain 教學】\n- 前往新 Web Service 的「Settings」頁面，找到「Custom Domains」板塊。\n- 輸入您的網域 `chikeechi.com` 並點擊「Add Domain」。\n- Render 會提供一組 DNS 紀錄（通常是 CNAME 或 A Record）。\n- 登入您的網域供應商 (例如 Cloudflare, GoDaddy 等)，在 DNS 設定中加入該組紀錄。\n- 等待生效後，您就可以繼續用原來的網址運作了！\n\n(註：只要伺服器位於支援地區，香港本地用戶即可正常使用，完全不需要 VPN！)";
+      } else if (typeof errorMessage === 'string' && (errorMessage.includes('429') || errorMessage.includes('Quota exceeded') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('Too Many Requests'))) {
+        errorMessage = "Google Gemini API 請求配額已達上限。\n\n目前的 Google 帳號免費額度（每日或每分鐘）已經用盡。請稍後（約 1 分鐘後）再試！若頻繁出現此錯誤，可能需要更換 API 密鑰。";
       }
 
       return res.status(500).json({ error: errorMessage });
