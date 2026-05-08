@@ -109,9 +109,13 @@ export default function App() {
   const [enableExcludeUnseen, setEnableExcludeUnseen] = useState(false);
   const [excludeUnseenCount, setExcludeUnseenCount] = useState<number>(20);
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
+  const [use2Combos, setUse2Combos] = useState(false);
+  const [combo2Count, setCombo2Count] = useState<number>(1);
+  const [use3Combos, setUse3Combos] = useState(false);
+  const [combo3Count, setCombo3Count] = useState<number>(1);
   const [showUnseenNumbers, setShowUnseenNumbers] = useState(false);
-  const [generatedBets, setGeneratedBets] = useState<number[][]>([]);
-  const [undoStack, setUndoStack] = useState<{index: number, bet: number[]}[]>([]);
+  const [generatedBets, setGeneratedBets] = useState<import('@/lib/marksix').GeneratedBet[]>([]);
+  const [undoStack, setUndoStack] = useState<{index: number, bet: import('@/lib/marksix').GeneratedBet}[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [analysisDrawIndex, setAnalysisDrawIndex] = useState<number | null>(null);
   const [analysisRangeCount, setAnalysisRangeCount] = useState<number>(5);
@@ -120,6 +124,7 @@ export default function App() {
 
   // Check Results State
   const [isCheckDialogOpen, setIsCheckDialogOpen] = useState(false);
+  const [isStrategyInfoOpen, setIsStrategyInfoOpen] = useState(false);
   const [checkDrawIndex, setCheckDrawIndex] = useState<number>(0);
   const [checkMethod, setCheckMethod] = useState<"upload" | "manual">("upload");
   const [checkManualInput, setCheckManualInput] = useState("");
@@ -178,7 +183,9 @@ export default function App() {
   const [hkjcPassword, setHkjcPassword] = useState("");
   const [isHkjcDialogOpen, setIsHkjcDialogOpen] = useState(false);
   const [savedCredentials, setSavedCredentials] = useState(false);
-  const [errorModal, setErrorModal] = useState<{ message: string; partialBets?: number[][] } | null>(null);
+  const [errorModal, setErrorModal] = useState<{ message: string; partialBets?: import('@/lib/marksix').GeneratedBet[] } | null>(null);
+  const [viewingBetExpl, setViewingBetExpl] = useState<{ index: number, bet: import('@/lib/marksix').GeneratedBet } | null>(null);
+  const [selectedBetModal, setSelectedBetModal] = useState<{ bet: import('@/lib/marksix').GeneratedBet, index: number } | null>(null);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("hkjc_mock_user");
@@ -215,6 +222,8 @@ export default function App() {
     setRecentMode("");
     setRecentCount(5);
     setIncludeSpecial(false);
+    setUse2Combos(false);
+    setUse3Combos(false);
   };
 
   const handleGenerate = () => {
@@ -253,7 +262,12 @@ export default function App() {
           includeRanges: complexIncludeRanges
         },
         excludeUnseenInRecent: (enableRecent || enableComplexRecent) && enableExcludeUnseen ? excludeUnseenCount : undefined,
-        excludeUnseenIncludeSpecial
+        excludeUnseenIncludeSpecial,
+        use2Combos,
+        combo2Count,
+        use3Combos,
+        combo3Count,
+        comboAnalysisDrawCount: 100
       });
 
       setTimeout(() => {
@@ -288,7 +302,7 @@ export default function App() {
   const handleCopyBets = () => {
     if (generatedBets.length === 0) return;
     const text = generatedBets
-      .map((bet, index) => `注 ${index + 1}: ${bet.map((n) => n.toString()).join(", ")}`)
+      .map((bet, index) => `注 ${index + 1}: ${bet.numbers.map((n) => n.toString()).join(", ")}`)
       .join("\n");
     navigator.clipboard
       .writeText(text)
@@ -554,7 +568,7 @@ export default function App() {
         } catch(e) {}
         
         if (validBets.length > 0) {
-          setGeneratedBets(validBets);
+          setGeneratedBets(validBets.map(b => ({ numbers: b, explanations: ["從圖片解析載入"] })));
           setUndoStack([]);
           setIsHkjcDialogOpen(false);
           toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
@@ -634,7 +648,7 @@ export default function App() {
       if (Array.isArray(parsed)) {
         const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
         if (validBets.length > 0) {
-          setGeneratedBets(validBets);
+          setGeneratedBets(validBets.map(b => ({ numbers: b, explanations: ["從圖片解析載入"] })));
           setUndoStack([]);
           toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
         } else {
@@ -781,7 +795,7 @@ export default function App() {
           <div class="bet">
             <div class="index">#${i + 1}</div>
             <div class="balls">
-              ${bet.map(n => {
+              ${bet.numbers.map(n => {
                 const color = getBallColor(n);
                 const colorClass = color === 'red' ? 'red' : color === 'blue' ? 'blue' : 'green';
                 return `<div class="ball ${colorClass}">${n}</div>`;
@@ -820,7 +834,7 @@ export default function App() {
   };
 
   const getBookmarkletCode = (isDesktop: boolean = false) => {
-    const betsJson = JSON.stringify(generatedBets);
+    const betsJson = JSON.stringify(generatedBets.map(b => b.numbers));
     if (isDesktop) {
       const script = `(async function(){
         const bets = ${betsJson};
@@ -1862,6 +1876,76 @@ export default function App() {
                         )}
                       </div>
                     )}
+                    
+                    <div className="flex flex-col gap-1 mt-2 border-t-[2px] border-black border-dashed pt-3 pb-1">
+                      <div className="flex flex-row items-center justify-between w-full">
+                        <div className="flex flex-col gap-3 ml-1 shrink-0">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <Checkbox 
+                              checked={use2Combos}
+                              onCheckedChange={(checked) => {
+                                setUse2Combos(checked as boolean);
+                                if (checked) setUse3Combos(false);
+                              }}
+                              className="w-[20px] h-[20px] border-[3px] border-black rounded-full data-[state=checked]:bg-black data-[state=checked]:text-white flex items-center justify-center [&>span>svg]:hidden relative before:content-[''] before:absolute before:inset-0 before:m-auto before:w-2.5 before:h-2.5 before:bg-white before:rounded-full before:opacity-0 data-[state=checked]:before:opacity-100"
+                            />
+                            <span className="font-bold text-sm sm:text-[15px] whitespace-nowrap select-none">採用「2合」策略</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <Checkbox 
+                              checked={use3Combos}
+                              onCheckedChange={(checked) => {
+                                setUse3Combos(checked as boolean);
+                                if (checked) setUse2Combos(false);
+                              }}
+                              className="w-[20px] h-[20px] border-[3px] border-black rounded-full data-[state=checked]:bg-black data-[state=checked]:text-white flex items-center justify-center [&>span>svg]:hidden relative before:content-[''] before:absolute before:inset-0 before:m-auto before:w-2.5 before:h-2.5 before:bg-white before:rounded-full before:opacity-0 data-[state=checked]:before:opacity-100"
+                            />
+                            <span className="font-bold text-sm sm:text-[15px] whitespace-nowrap select-none">採用「3合」策略</span>
+                          </label>
+                        </div>
+                        <button
+                          onClick={() => setIsStrategyInfoOpen(true)}
+                          className="bg-white border-[3px] border-black text-black px-3 py-1.5 sm:px-4 sm:py-2 rounded-[16px] text-[13px] sm:text-sm font-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-100 hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all shrink-0 flex items-center justify-center mr-1"
+                        >
+                          2合和3合說明
+                        </button>
+                      </div>
+
+                      {use2Combos && (
+                        <div className="ml-7 mb-2 flex items-center gap-2 border-[2px] border-zinc-200 p-1.5 bg-zinc-50 rounded-lg w-fit">
+                          <span className="text-xs font-bold text-zinc-600">抽選「2合」數量:</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3].map(c => (
+                              <button
+                                key={c}
+                                onClick={() => setCombo2Count(c)}
+                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border-2 border-black transition-all ${combo2Count === c ? "bg-[#3b82f6] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "bg-white text-black hover:bg-zinc-100"}`}
+                              >
+                                {c} 組
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {use3Combos && (
+                        <div className="ml-7 mt-1.5 mb-1 flex items-center gap-2 border-[2px] border-zinc-200 p-1.5 bg-zinc-50 rounded-lg w-fit">
+                          <span className="text-xs font-bold text-zinc-600">抽選「3合」數量:</span>
+                          <div className="flex gap-1">
+                            {[1, 2].map(c => (
+                              <button
+                                key={c}
+                                onClick={() => setCombo3Count(c)}
+                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border-2 border-black transition-all ${combo3Count === c ? "bg-[#3b82f6] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "bg-white text-black hover:bg-zinc-100"}`}
+                              >
+                                {c} 組
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 </div>
               </CardContent>
@@ -1937,7 +2021,7 @@ export default function App() {
                   </div>
                   
                   {(() => {
-                    const allGeneratedNumbers = generatedBets.flat();
+                    const allGeneratedNumbers = generatedBets.map(b => b.numbers).flat();
                     
                     const freqMap = new Map<number, number>();
                     allGeneratedNumbers.forEach(n => freqMap.set(n, (freqMap.get(n) || 0) + 1));
@@ -2277,14 +2361,15 @@ export default function App() {
                   {generatedBets.map((bet, index) => (
                     <div
                       key={index}
-                      className="w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap"
+                      className="w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap cursor-pointer z-0"
+                      onClick={() => setViewingBetExpl({ index, bet })}
                     >
-                      <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1">
+                      <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
                         <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
                           #{index + 1}
                         </div>
                         <div className="flex flex-nowrap gap-0 sm:gap-0.5">
-                          {bet.map((num, i) => {
+                          {bet.numbers.map((num, i) => {
                             const color = getBallColor(num);
                             return (
                               <div
@@ -2314,17 +2399,38 @@ export default function App() {
                           })}
                         </div>
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setUndoStack(prev => [...prev, { index, bet: generatedBets[index] }]);
                             setGeneratedBets(prev => prev.filter((_, i) => i !== index));
                           }}
-                          className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] shrink-0 rounded-full flex items-center justify-center bg-zinc-200 hover:bg-red-400 text-black border-2 border-black ml-1 mr-1 transition-colors hover:scale-105"
+                          className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] shrink-0 rounded-full flex items-center justify-center bg-zinc-200 hover:bg-red-400 text-black border-2 border-black ml-1 mr-1 transition-colors hover:scale-105 pointer-events-auto"
                         >
                           <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>
                       </div>
                     </div>
                   ))}
+                </div>
+
+                <div className="mt-4 sm:mt-6 bg-[#ffedd5] border-[3px] sm:border-4 border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-2xl mx-auto w-full text-center">
+                  <h3 className="font-black text-lg mb-1 flex items-center justify-center gap-1.5 min-w-0"><Sparkles className="w-5 h-5 text-orange-500 shrink-0" /> 全部生成設定筆記</h3>
+                  <div className="text-sm font-bold text-zinc-700 flex flex-wrap gap-2 justify-center mt-2">
+                    {preferredOddCount !== null && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 ({preferredOddCount}單 {preferredEvenCount}雙)</span>}
+                    {oddEven === 'odd' && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 (6單)</span>}
+                    {oddEven === 'even' && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 (6雙)</span>}
+                    {colors.length === 1 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定波色比例 (全{colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'})</span>}
+                    {colors.length === 2 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定波色比例 ({colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'} {6 - (colorRatioOption || 3)} : {colorRatioOption || 3} {colors[1] === 'red' ? '紅' : colors[1] === 'blue' ? '藍' : '綠'})</span>}
+                    {use3Combos && <span className="bg-[#FFE867] border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">大數據 3合策略</span>}
+                    {use2Combos && <span className="bg-[#FFE867] border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">大數據 2合策略</span>}
+                    {enableRecent && recentMode === "include" && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">只買近 {recentCount} 期號碼</span>}
+                    {enableRecent && recentMode === "exclude" && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除近 {recentCount} 期號碼</span>}
+                    {enableExcludeUnseen && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除近 {excludeUnseenCount} 期未出號碼</span>}
+                    {excludedNumbers.length > 0 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除號碼: {excludedNumbers.join(', ')}</span>}
+                    {luckyNumbers.length > 0 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">必含號碼: {luckyNumbers.join(', ')}</span>}
+                    {enableComplexRecent && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定複雜近期區間</span>}
+                    <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
+                  </div>
                 </div>
 
               </div>
@@ -2660,6 +2766,42 @@ export default function App() {
       </Dialog>
 
 
+      <Dialog open={isStrategyInfoOpen} onOpenChange={setIsStrategyInfoOpen}>
+        <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] bg-white text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2">
+          <DialogHeader className="bg-[#BAE6FD] border-b-4 border-black p-4">
+            <DialogTitle className="text-xl font-black flex items-center justify-center gap-2">
+              <Sparkles className="w-6 h-6 text-[#3b82f6]" />
+              AI 大數據智能預測說明
+            </DialogTitle>
+          </DialogHeader>
+          <div className="p-6 text-sm font-bold text-zinc-700 space-y-4 text-left leading-relaxed">
+            <div className="bg-[#ffedd5] p-3 rounded-lg border-2 border-orange-200">
+              <h4 className="text-orange-600 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎲</span> 採用「2合」策略</h4>
+              <p className="text-zinc-800">
+                系統會從初步生成的 6 個號碼中，隨機抽取 1 至 3 個號碼作為「基數」。分析過去 100 期，找出與該基數同開機率最高的頭 6 個伴隨號碼 (2合組合)，隨機加入 1 個高機率號碼（變成 7 個號碼），最後隨機剔走 1 個原號碼變回 6 個。
+              </p>
+            </div>
+            <div className="bg-[#e0f2fe] p-3 rounded-lg border-2 border-blue-200">
+              <h4 className="text-blue-600 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎯</span> 採用「3合」策略</h4>
+              <p className="text-zinc-800">
+                系統會從初步生成的 6 個號碼中，隨機抽取 1 至 3 對號碼作為「基數組合」。分析過去 100 期，找出與該兩碼同開機率最高的頭 6 個伴隨號碼 (3合組合)，隨機加入 1 個高機率號碼（變成 7 個號碼），最後隨機剔走 1 個原號碼變回 6 個。
+              </p>
+            </div>
+            <p className="text-[12px] text-zinc-500 bg-white p-2 rounded border-2 border-zinc-200 mt-2">
+               * 系統在隨機剔走號碼時，會自動避開基數、新加入的高機率號碼及您指定的必出幸運號碼。
+            </p>
+          </div>
+          <DialogFooter className="p-4 bg-zinc-50 border-t-4 border-black flex justify-center">
+            <Button
+              className="bg-white border-2 border-black text-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-100 hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all px-8 rounded-xl"
+              onClick={() => setIsStrategyInfoOpen(false)}
+            >
+              明白
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
       <Dialog open={!!errorModal} onOpenChange={(open) => !open && setErrorModal(null)}>
         <DialogContent className="sm:max-w-md border-[4px] border-black rounded-[24px] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-0 overflow-hidden bg-white">
           <DialogHeader className="bg-[#FF4D4D] border-b-4 border-black p-6">
@@ -2696,6 +2838,56 @@ export default function App() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!viewingBetExpl} onOpenChange={(open) => { if (!open) setViewingBetExpl(null); }}>
+        <DialogContent className="sm:max-w-2xl border-[4px] border-black rounded-[24px] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-0 overflow-hidden bg-white w-[95vw]">
+          <DialogHeader className="bg-[#BAE6FD] border-b-4 border-black p-4 sm:p-6 pb-4">
+            <DialogTitle className="text-xl sm:text-2xl font-black text-black flex items-center justify-between gap-2 max-w-full">
+              <span className="flex items-center gap-2 pr-4 min-w-0">
+                <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-[#3b82f6] shrink-0" />
+                <span className="truncate">第 {viewingBetExpl?.index !== undefined ? viewingBetExpl.index + 1 : ''} 注：大數據選號說明</span>
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="p-4 sm:p-6 bg-zinc-50 shrink-0 min-h-[100px] max-h-[60vh] sm:max-h-[85vh] overflow-y-auto">
+            <div className="flex flex-col gap-2 sm:gap-3">
+              {viewingBetExpl?.bet?.explanations?.map((expl, idx) => (
+                <div key={idx} className="bg-white border-2 border-black p-3 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-start gap-2 sm:gap-3 break-words relative overflow-hidden">
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 shrink-0 bg-[#FFE867] border-2 border-black rounded-full flex items-center justify-center font-black text-xs">
+                    {idx + 1}
+                  </div>
+                  <div className="text-[13px] sm:text-[15px] font-bold text-black pt-0.5 whitespace-pre-wrap break-words pr-2 leading-relaxed max-w-full">
+                    {expl}
+                  </div>
+                </div>
+              ))}
+              {(!viewingBetExpl?.bet?.explanations || viewingBetExpl.bet.explanations.length === 0) && (
+                 <div className="text-center font-bold text-zinc-500 py-4">隨機生成注數，無特定大數據說明。</div>
+              )}
+            </div>
+            
+            <div className="mt-4 border-t-2 border-black border-dashed pt-4 flex gap-1.5 justify-center flex-wrap max-w-full">
+              {viewingBetExpl?.bet?.numbers?.map(n => {
+                const color = getBallColor(n);
+                const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                return (
+                  <div key={n} className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border-[2.5px] border-black flex items-center justify-center font-black text-base sm:text-lg text-black ${bgColor} shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]`}>
+                    {n}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter className="p-4 bg-white border-t-4 border-black flex flex-col items-center justify-center">
+            <Button
+              onClick={() => setViewingBetExpl(null)}
+              className="w-full max-w-[200px] bg-white hover:bg-zinc-100 text-black border-4 border-black font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-xl h-10 sm:h-12 text-base sm:text-lg"
+            >
+              關閉
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Hidden container exclusively formatted for Screenshot output */}
       <div className="fixed top-0 left-0 -z-50 pointer-events-none opacity-0 overflow-hidden w-0 h-0">
         <div id="capture-area" className={`bg-[#1e1e1e] font-sans flex flex-col p-8 items-center ${generatedBets.length >= 13 ? 'w-[1450px]' : generatedBets.length >= 11 ? 'w-[1000px]' : 'w-[500px]'}`}>
@@ -2710,7 +2902,7 @@ export default function App() {
                     #{index + 1}
                   </div>
                   <div className="flex gap-2.5">
-                    {bet.map((num, i) => {
+                    {bet.numbers.map((num, i) => {
                       const color = getBallColor(num);
                       const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
                       return (
@@ -2727,8 +2919,31 @@ export default function App() {
               </div>
             ))}
           </div>
+
+          <div className="mt-8 bg-[#ffedd5] border-[4px] border-black rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-full text-center">
+            <h3 className="font-black text-xl mb-2 flex items-center justify-center gap-2"><Sparkles className="w-6 h-6 text-orange-500" /> 幸運生成設定筆記</h3>
+            <div className="text-base font-bold text-zinc-800 flex flex-wrap gap-2.5 justify-center mt-2">
+              {preferredOddCount !== null && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">單雙 ({preferredOddCount}單{preferredEvenCount}雙)</span>}
+              {oddEven === 'odd' && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">單雙 (6單)</span>}
+              {oddEven === 'even' && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">單雙 (6雙)</span>}
+              {colors.length === 1 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">波色 (全{colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'})</span>}
+              {colors.length === 2 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">波色 ({colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'} {6 - (colorRatioOption || 3)} : {colorRatioOption || 3} {colors[1] === 'red' ? '紅' : colors[1] === 'blue' ? '藍' : '綠'})</span>}
+              {use3Combos && <span className="bg-[#FFE867] border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">大數據 3合策略</span>}
+              {use2Combos && <span className="bg-[#FFE867] border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">大數據 2合策略</span>}
+              {enableRecent && recentMode === "include" && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">只買近 {recentCount} 期</span>}
+              {enableRecent && recentMode === "exclude" && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">排除近 {recentCount} 期</span>}
+              {enableExcludeUnseen && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">排除近 {excludeUnseenCount} 期未出</span>}
+              {excludedNumbers.length > 0 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">排除號碼: {excludedNumbers.join(', ')}</span>}
+              {luckyNumbers.length > 0 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">必含號碼: {luckyNumbers.join(', ')}</span>}
+              {enableComplexRecent && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">複雜近期篩選區間</span>}
+              {oddEven === 'all' && colors.length === 3 && !use2Combos && !use3Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && (
+                 <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">完全隨機生成</span>
+              )}
+            </div>
+          </div>
+
           <div className="mt-8 mb-4 p-4 bg-white rounded-2xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center">
-            <QRCodeSVG value={JSON.stringify(generatedBets)} size={160} />
+            <QRCodeSVG value={JSON.stringify(generatedBets.map(b => b.numbers))} size={160} />
             <div className="mt-3 text-sm font-black text-black">快速對獎・SCAN ME</div>
           </div>
           <div className="mb-2 text-[#FFE867] text-[15px] font-bold tracking-widest">

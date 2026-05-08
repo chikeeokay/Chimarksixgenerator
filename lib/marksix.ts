@@ -40,11 +40,21 @@ export interface GenerateOptions {
   };
   excludeUnseenInRecent?: number; // Exclude numbers not seen in the last N draws
   excludeUnseenIncludeSpecial?: boolean; // Whether to include special numbers when determining seen numbers
+  use2Combos?: boolean; // Enable 2-combo generation logic based on last N draws
+  combo2Count?: number;
+  use3Combos?: boolean; // Enable 3-combo generation logic based on last N draws
+  combo3Count?: number;
+  comboAnalysisDrawCount?: number; // How many past draws to analyze for combos (default 100)
+}
+
+export interface GeneratedBet {
+  numbers: number[];
+  explanations: string[];
 }
 
 export class PartialGenerationError extends Error {
-  partialBets: number[][];
-  constructor(message: string, partialBets: number[][]) {
+  partialBets: GeneratedBet[];
+  constructor(message: string, partialBets: GeneratedBet[]) {
     super(message);
     this.name = "PartialGenerationError";
     this.partialBets = partialBets;
@@ -52,7 +62,40 @@ export class PartialGenerationError extends Error {
   }
 }
 
-export function generateBets(options: GenerateOptions): number[][] {
+function getRandomOne<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getTopCombos(draws: number[][], comboSize: 2 | 3, topN: number = 6, validNumbers: number[] | null = null): {nums: number[], freq: number}[] {
+  const freqs = new Map<string, number>();
+
+  for (const draw of draws) {
+    let nums = [...new Set(draw)].sort((a,b) => a - b);
+    if (validNumbers) {
+       nums = nums.filter(n => validNumbers.includes(n));
+    }
+    for (let i = 0; i < nums.length; i++) {
+       for (let j = i + 1; j < nums.length; j++) {
+          if (comboSize === 2) {
+             const key = `${nums[i]},${nums[j]}`;
+             freqs.set(key, (freqs.get(key) || 0) + 1);
+          } else {
+             for (let k = j + 1; k < nums.length; k++) {
+                const key = `${nums[i]},${nums[j]},${nums[k]}`;
+                freqs.set(key, (freqs.get(key) || 0) + 1);
+             }
+          }
+       }
+    }
+  }
+  
+  return Array.from(freqs.entries())
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(e => ({ nums: e[0].split(',').map(Number), freq: e[1] }));
+}
+
+export function generateBets(options: GenerateOptions): GeneratedBet[] {
   const {
     count,
     ranges = [{start: 1, end: 49}],
@@ -131,18 +174,24 @@ export function generateBets(options: GenerateOptions): number[][] {
     throw new Error(`必出幸運號碼不能超過 6 個`);
   }
 
-  const bets: number[][] = [];
+  let drawsForCombos: number[][] = [];
+  if ((options.use2Combos || options.use3Combos) && recentDraws.length > 0) {
+    const drawsToAnalyzeCount = options.comboAnalysisDrawCount || 100;
+    drawsForCombos = recentDraws.slice(0, drawsToAnalyzeCount);
+  }
+
+  const bets: GeneratedBet[] = [];
   const seenBets = new Set<string>();
   let attempts = 0;
   const maxAttempts = count * 100; // Prevent infinite loop
 
   while (bets.length < count && attempts < maxAttempts) {
-    const bet = generateSingleBet(pool, mustInclude);
-    const betKey = bet.join(",");
+    const betResult = generateSingleBet(pool, mustInclude, options, drawsForCombos);
+    const betKey = betResult.numbers.join(",");
     
     // Check preferred odds/evens count
-    const oddCount = bet.filter(n => n % 2 !== 0).length;
-    const evenCount = bet.filter(n => n % 2 === 0).length;
+    const oddCount = betResult.numbers.filter(n => n % 2 !== 0).length;
+    const evenCount = betResult.numbers.filter(n => n % 2 === 0).length;
     
     let validCounts = true;
     if (options.preferredOddCount !== undefined && options.preferredOddCount !== null && oddCount !== options.preferredOddCount) {
@@ -153,7 +202,7 @@ export function generateBets(options: GenerateOptions): number[][] {
     }
 
     if (colors.length === 2 && options.colorRatioOption) {
-      const color2Count = bet.filter(n => getBallColor(n) === colors[1]).length;
+      const color2Count = betResult.numbers.filter(n => getBallColor(n) === colors[1]).length;
       if (color2Count !== options.colorRatioOption) {
         validCounts = false;
       }
@@ -161,7 +210,7 @@ export function generateBets(options: GenerateOptions): number[][] {
 
     if (validCounts && !seenBets.has(betKey)) {
       seenBets.add(betKey);
-      bets.push(bet);
+      bets.push(betResult);
     }
     attempts++;
   }
@@ -175,12 +224,120 @@ export function generateBets(options: GenerateOptions): number[][] {
   return bets;
 }
 
-function generateSingleBet(pool: number[], mustInclude: number[] = []): number[] {
-  const filteredPool = pool.filter(n => !mustInclude.includes(n));
-  const shuffled = [...filteredPool].sort(() => Math.random() - 0.5);
-  const selectedNeeded = 6 - mustInclude.length;
-  const selected = shuffled.slice(0, selectedNeeded);
-  return [...mustInclude, ...selected].sort((a, b) => a - b);
+function generateSingleBet(
+  pool: number[], 
+  mustInclude: number[] = [],
+  options: GenerateOptions,
+  comboDraws: number[][]
+): GeneratedBet {
+  let selected = [...mustInclude];
+  let availablePool = pool.filter(n => !mustInclude.includes(n));
+  let explanations: string[] = [];
+
+  // 1. Fill exactly 6 first (ignoring combos for now)
+  while (selected.length < 6) {
+    if (availablePool.length > 0) {
+       const nextNum = getRandomOne(availablePool);
+       selected.push(nextNum);
+       availablePool = availablePool.filter(n => n !== nextNum);
+    } else {
+       break; // Shouldn't happen unless pools are tiny
+    }
+  }
+
+  let protectedNums = [...mustInclude];
+
+  // 2. Try 2-combo post-processing
+  if (options.use2Combos && comboDraws.length > 0) {
+     let count = options.combo2Count || 1;
+     let modifiable = selected.filter(n => !protectedNums.includes(n));
+     let baseNums = [...modifiable].sort(() => Math.random() - 0.5).slice(0, count);
+     
+     // Protect all chosen base numbers so they don't get discarded by other combo additions
+     protectedNums.push(...baseNums);
+     
+     for (const base of baseNums) {
+        const freqs = new Map<number, number>();
+        for (const draw of comboDraws) {
+           if (draw.includes(base)) {
+              for (const num of draw) {
+                 if (num !== base && !selected.includes(num) && (pool.includes(num) || mustInclude.includes(num))) {
+                    freqs.set(num, (freqs.get(num) || 0) + 1);
+                 }
+              }
+           }
+        }
+        
+        const topPartners = Array.from(freqs.entries())
+            .sort((a,b) => b[1] - a[1])
+            .slice(0, 6);
+            
+        if (topPartners.length > 0) {
+            const partnerAndFreq = getRandomOne(topPartners);
+            const partner = partnerAndFreq[0];
+            const partnerFreq = partnerAndFreq[1];
+            
+            selected.push(partner);
+            protectedNums.push(partner);
+            
+            const discardCandidates = selected.filter(n => !protectedNums.includes(n));
+            if (discardCandidates.length > 0) {
+                const toDiscard = getRandomOne(discardCandidates);
+                selected = selected.filter(n => n !== toDiscard);
+                explanations.push(`根據大數據「2合」策略：從原注項抽取了 ${base}號，近100期與其最常同開之最高機率號碼之一為 ${partner}號 (共 ${partnerFreq} 次)，因此加入 ${partner}號，並隨機剔走 ${toDiscard}號。`);
+            } else {
+                selected.pop();
+            }
+        }
+     }
+  }
+
+  // 3. Try 3-combo post-processing
+  if (options.use3Combos && comboDraws.length > 0) {
+     let count = options.combo3Count || 1;
+     for (let i=0; i<count; i++) {
+        const modifiable = selected.filter(n => !protectedNums.includes(n));
+        const shuffled = [...modifiable].sort(() => Math.random() - 0.5);
+        if (shuffled.length < 2) continue;
+        const b1 = shuffled[0];
+        const b2 = shuffled[1];
+        
+        const freqs = new Map<number, number>();
+        for (const draw of comboDraws) {
+           if (draw.includes(b1) && draw.includes(b2)) {
+              for (const num of draw) {
+                 if (num !== b1 && num !== b2 && !selected.includes(num) && (pool.includes(num) || mustInclude.includes(num))) {
+                    freqs.set(num, (freqs.get(num) || 0) + 1);
+                 }
+              }
+           }
+        }
+        
+        const topPartners = Array.from(freqs.entries())
+            .sort((a,b) => b[1] - a[1])
+            .slice(0, 6);
+            
+        if (topPartners.length > 0) {
+            const partnerAndFreq = getRandomOne(topPartners);
+            const partner = partnerAndFreq[0];
+            const partnerFreq = partnerAndFreq[1];
+            
+            selected.push(partner);
+            protectedNums.push(b1, b2, partner);
+            
+            const discardCandidates = selected.filter(n => !protectedNums.includes(n));
+            if (discardCandidates.length > 0) {
+                const toDiscard = getRandomOne(discardCandidates);
+                selected = selected.filter(n => n !== toDiscard);
+                explanations.push(`根據大數據「3合」策略：從原注項抽取了 ${b1}號 和 ${b2}號，近100期與最常同開之最高機率號碼之一為 ${partner}號 (共 ${partnerFreq} 次)，因此加入 ${partner}號，並隨機剔走 ${toDiscard}號。`);
+            } else {
+                selected.pop();
+            }
+        }
+     }
+  }
+
+  return { numbers: selected.sort((a, b) => a - b), explanations };
 }
 
 // Mock past results
