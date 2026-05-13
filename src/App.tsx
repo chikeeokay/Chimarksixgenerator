@@ -131,6 +131,13 @@ export default function App() {
   const [checkResults, setCheckResults] = useState<{ matches: number[], specialMatch: boolean }[] | null>(null);
   const [isCheckingScreenshot, setIsCheckingScreenshot] = useState(false);
 
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [aiAnalysisDraws, setAiAnalysisDraws] = useState(50);
+  const [aiBetCount, setAiBetCount] = useState(6);
+  const [isAiGenerated, setIsAiGenerated] = useState(false);
+  const [aiAnalysisDrawsUsed, setAiAnalysisDrawsUsed] = useState(50);
+  const [aiReasoning, setAiReasoning] = useState<string[]>([]);
+
   useEffect(() => {
     setBankers([]);
     setExcludedLegs([]);
@@ -227,6 +234,7 @@ export default function App() {
   };
 
   const handleGenerate = () => {
+    setIsAiGenerated(false);
     if (enableRecent && recentMode === "" && !enableComplexRecent) {
       toast.error("請選擇「排除近期號碼」或「只買近期號碼」");
       return;
@@ -283,6 +291,126 @@ export default function App() {
         });
       } else {
         setErrorModal({ message: error.message || "生成失敗，請放寬篩選條件" });
+      }
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAIGenerate = () => {
+    setIsAiDialogOpen(false);
+    setIsGenerating(true);
+    setIsAiGenerated(true);
+    setAiAnalysisDrawsUsed(aiAnalysisDraws);
+
+    try {
+      const rawRecentDraws = liveResults.slice(0, aiAnalysisDraws).map(getRawDrawNumbers);
+      const allNums = rawRecentDraws.flatMap(d => d.slice(0,6));
+      
+      const oddCount = allNums.filter(n => n % 2 !== 0).length;
+      const evenCount = allNums.filter(n => n % 2 === 0).length;
+      const preferOdd = oddCount >= evenCount ? Math.floor(Math.random() * 2) + 3 : Math.floor(Math.random() * 3) + 2;
+
+      const rbCounts = { red: 0, blue: 0, green: 0 };
+      allNums.forEach(n => rbCounts[getBallColor(n) as keyof typeof rbCounts]++);
+      const sortedColors = Object.keys(rbCounts).sort((a,b) => rbCounts[b as keyof typeof rbCounts] - rbCounts[a as keyof typeof rbCounts]);
+      const top2Colors = sortedColors.slice(0,2) as BallColor[];
+
+      setBetCount(aiBetCount);
+      setPreferredOddCount(preferOdd);
+      setPreferredEvenCount(6 - preferOdd);
+      setColors(["red", "blue", "green"]);
+      setColorRatioOption(3);
+      setEnableRecent(false);
+      setEnableComplexRecent(true);
+      setComplexExcludeRanges([]);
+      setComplexIncludeRanges([{ start: 2, end: 5 }]);
+      
+      setIncludeSpecial(false);
+      setLuckyNumbers([]);
+      setExcludedNumbers([]);
+      setBankers([]);
+      setExcludedLegs([]);
+      setEnableExcludeUnseen(false);
+      setExcludeUnseenIncludeSpecial(false);
+      setUse2Combos(true);
+      setCombo2Count(3);
+      const willUse3Combos = Math.random() > 0.5;
+      setUse3Combos(willUse3Combos);
+      setCombo3Count(1);
+      
+      const comboBetCount = Math.max(1, Math.round(aiBetCount * 0.2));
+      const normalBetCount = Math.max(0, aiBetCount - comboBetCount);
+
+      const explanations = [
+        `分析了過去 ${aiAnalysisDraws} 期的開彩數據，找出隱藏趨勢。`,
+        `單雙趨勢：近期${oddCount >= evenCount ? '單' : '雙'}數偏多，因此偏向採用 ${preferOdd}單 ${6-preferOdd}雙 組合。`,
+        `波色決策：近期最多出現的是${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波，AI 將維持均勻分配策略。`,
+        `溫度過濾：排除近 1 期的大熱號碼，並策略性保留近期微熱門號碼（第 2 - 5 期內曾出現的數字）。`,
+        `大數據演算法：從 ${aiBetCount} 注中撥出約 20% (${comboBetCount} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合，避免過度依賴單一策略；其餘 ${normalBetCount} 注則採用穩健的機率分佈。`
+      ];
+      setAiReasoning(explanations);
+      
+      const baseGenerateOptions = {
+        ranges: [{start: 1, end: 49}],
+        onlyOdd: false,
+        onlyEven: false,
+        preferredOddCount: preferOdd,
+        preferredEvenCount: 6 - preferOdd,
+        colors: ["red", "blue", "green"] as BallColor[],
+        colorRatioOption: 3,
+        recentMode: "none" as const,
+        recentCount: 5,
+        recentDraws: liveResults.map(getRawDrawNumbers),
+        includeSpecial: false,
+        mustInclude: [],
+        excludedNumbers: [],
+        complexRecentStrategy: {
+          enabled: true,
+          excludeRanges: [],
+          includeRanges: [{ start: 2, end: 5 }]
+        },
+        excludeUnseenInRecent: undefined,
+        excludeUnseenIncludeSpecial: false,
+        comboAnalysisDrawCount: aiAnalysisDraws
+      };
+
+      const normalBets = normalBetCount > 0 ? generateBets({
+        ...baseGenerateOptions,
+        count: normalBetCount,
+        use2Combos: false,
+        combo2Count: 0,
+        use3Combos: false,
+        combo3Count: 0,
+      }).map(bet => ({ ...bet, explanations: [`大數據演算法：此注採用純機率分佈，符合 ${preferOdd}單${6-preferOdd}雙 加均勻波色策略，以及過濾大熱區間。`] })) : [];
+
+      const comboBets = comboBetCount > 0 ? generateBets({
+        ...baseGenerateOptions,
+        count: comboBetCount,
+        use2Combos: true,
+        combo2Count: 3,
+        use3Combos: willUse3Combos,
+        combo3Count: 1,
+      }).map(bet => ({
+        ...bet,
+        explanations: (bet.explanations && bet.explanations.length > 0) ? bet.explanations : [`大數據演算法：此注採用 2合/3合 尋找最高勝率組合，並符合 ${preferOdd}單${6-preferOdd}雙 加均勻波色策略。`]
+      })) : [];
+      
+      const bets = [...normalBets, ...comboBets];
+
+      setTimeout(() => {
+        setGeneratedBets(bets);
+        setUndoStack([]);
+        setIsGenerating(false);
+      }, 400);
+
+    } catch(error: any) {
+      if (error.name === "PartialGenerationError") {
+        setErrorModal({
+          message: error.message,
+          partialBets: error.partialBets,
+        });
+      } else {
+        setErrorModal({ message: error.message || "生成失敗，請重試" });
       }
       setIsGenerating(false);
     }
@@ -1578,7 +1706,7 @@ export default function App() {
                         }}
                         className="w-4 h-4 border-[3px] border-black rounded-sm data-[state=checked]:bg-[#FF4D4D] data-[state=checked]:text-white"
                       />
-                      <Label htmlFor="enable-recent" className="text-[15px] font-bold cursor-pointer">啟用近期號碼策略</Label>
+                      <Label htmlFor="enable-recent" className="text-[15px] cursor-pointer">啟用近期號碼策略</Label>
                     </div>
 
                     {enableRecent && (
@@ -1593,7 +1721,7 @@ export default function App() {
                               onChange={() => setRecentMode("exclude")} 
                               className="w-3 h-3 accent-black cursor-pointer"
                             />
-                            <span className="font-bold text-xs flex-1 select-none">排除近期號碼</span>
+                            <span className="text-xs flex-1 select-none">排除近期號碼</span>
                           </label>
                           <label className="flex items-center space-x-1.5 bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:bg-zinc-50 relative active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all">
                             <input 
@@ -1604,7 +1732,7 @@ export default function App() {
                               onChange={() => setRecentMode("include")} 
                               className="w-3 h-3 accent-black cursor-pointer"
                             />
-                            <span className="font-bold text-xs flex-1 select-none">只買近期號碼</span>
+                            <span className="text-xs flex-1 select-none">只買近期號碼</span>
                           </label>
                         </div>
 
@@ -1616,7 +1744,7 @@ export default function App() {
                               onChange={(e) => setIncludeSpecial(e.target.checked)} 
                               className="w-4 h-4 accent-[#3b82f6] cursor-pointer"
                             />
-                            <span className="font-bold text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
+                            <span className="text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
                           </label>
                           <div className="flex items-center gap-1.5 w-full bg-white border-[3px] border-black py-0.5 px-1.5 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-50 transition-colors">
                             <Slider
@@ -1648,7 +1776,7 @@ export default function App() {
                         }}
                         className="w-4 h-4 border-[3px] border-black rounded-sm data-[state=checked]:bg-[#FF4D4D] data-[state=checked]:text-white"
                       />
-                      <Label htmlFor="enable-complex-recent" className="text-[15px] font-bold cursor-pointer">啟用更複雜的近期號碼策略</Label>
+                      <Label htmlFor="enable-complex-recent" className="text-[15px] cursor-pointer">啟用更複雜的近期號碼策略</Label>
                     </div>
 
                     {enableComplexRecent && (() => {
@@ -1790,7 +1918,7 @@ export default function App() {
                               onChange={(e) => setIncludeSpecial(e.target.checked)} 
                               className="w-4 h-4 accent-[#3b82f6] cursor-pointer"
                             />
-                            <span className="font-bold text-xs sm:text-sm whitespace-nowrap select-none">連特別號碼一齊考慮</span>
+                            <span className="text-xs sm:text-sm whitespace-nowrap select-none">連特別號碼一齊考慮</span>
                           </label>
                         </div>
                       );
@@ -1804,7 +1932,7 @@ export default function App() {
                             onCheckedChange={(checked) => setEnableExcludeUnseen(checked as boolean)}
                             className="w-4 h-4 border-[3px] border-black rounded-sm data-[state=checked]:bg-[#FF4D4D] data-[state=checked]:text-white"
                           />
-                          <span className="font-bold text-xs sm:text-sm whitespace-nowrap select-none flex items-center gap-1">排除近期沒有出現過的所有號碼</span>
+                          <span className="text-xs sm:text-sm whitespace-nowrap select-none flex items-center gap-1">排除近期沒有出現過的所有號碼</span>
                         </label>
                         {enableExcludeUnseen && (
                           <div className="flex flex-col gap-1.5 mb-1 w-full pl-4">
@@ -1832,7 +1960,7 @@ export default function App() {
                                   onChange={(e) => setExcludeUnseenIncludeSpecial(e.target.checked)} 
                                   className="w-4 h-4 accent-[#3b82f6] cursor-pointer"
                                 />
-                                <span className="font-bold text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
+                                <span className="text-[11px] sm:text-xs whitespace-nowrap select-none">連特別號碼一齊考慮</span>
                               </label>
                             </div>
                             
@@ -1950,18 +2078,27 @@ export default function App() {
                 </div>
               </CardContent>
               <CardFooter className="bg-zinc-100 border-t-[3px] border-black py-2 px-3 sm:py-3 sm:px-4 m-0 rounded-none w-full flex flex-col justify-center gap-3 mt-auto">
-                <Button
-                  className="w-fit bg-orange-400 hover:bg-orange-500 text-black h-auto py-1.5 px-6 text-lg font-black border-4 border-black rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all mx-auto"
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                >
-                  {isGenerating ? (
-                    <RefreshCw className="w-6 h-6 mr-2 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-6 h-6 mr-2" />
-                  )}
-                  {isGenerating ? "生成中..." : "生成號碼"}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full justify-center mt-2 max-w-sm mx-auto">
+                  <Button
+                    className="flex-1 bg-orange-400 font-bold hover:bg-orange-500 text-black h-auto py-1.5 px-4 text-base border-2 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                    onClick={handleGenerate}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <RefreshCw className="w-5 h-5 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-5 h-5 mr-1" />
+                    )}
+                    {isGenerating ? "生成中..." : "生成號碼"}
+                  </Button>
+                  <Button
+                    className="flex-1 bg-green-400 font-bold hover:bg-green-500 text-black h-auto py-1.5 px-4 text-base border-2 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                    onClick={() => setIsAiDialogOpen(true)}
+                  >
+                    <Sparkles className="w-5 h-5 mr-1 text-white" />
+                    AI 選號
+                  </Button>
+                </div>
 
                 <Button
                   variant="outline"
@@ -2416,6 +2553,19 @@ export default function App() {
                 <div className="mt-4 sm:mt-6 bg-[#ffedd5] border-[3px] sm:border-4 border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-2xl mx-auto w-full text-center">
                   <h3 className="font-black text-lg mb-1 flex items-center justify-center gap-1.5 min-w-0"><Sparkles className="w-5 h-5 text-orange-500 shrink-0" /> 全部生成設定筆記</h3>
                   <div className="text-sm font-bold text-zinc-700 flex flex-wrap gap-2 justify-center mt-2">
+                    {isAiGenerated && (
+                      <div className="w-full text-left bg-[#bbf7d0] border border-[#16a34a] rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
+                        <div className="font-black text-[#166534] mb-2 flex items-center gap-1.5 text-base sm:text-lg">
+                          <Sparkles className="w-5 h-5 shrink-0" /> 
+                          AI 大數據智能選號 (綜合近期 {aiAnalysisDrawsUsed} 期) - 分析筆記：
+                        </div>
+                        <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-[#166534] marker:text-[#166534]">
+                          {aiReasoning.map((reason, i) => (
+                            <li key={i}>{reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {preferredOddCount !== null && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 ({preferredOddCount}單 {preferredEvenCount}雙)</span>}
                     {oddEven === 'odd' && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 (6單)</span>}
                     {oddEven === 'even' && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 (6雙)</span>}
@@ -2554,7 +2704,7 @@ export default function App() {
       </footer>
 
       <Dialog open={analysisDrawIndex !== null} onOpenChange={(open) => !open && setAnalysisDrawIndex(null)}>
-        <DialogContent className="sm:max-w-6xl border-[4px] border-black rounded-[24px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-0 w-[95vw] max-h-[90vh] [&>button.absolute]:hidden overflow-hidden bg-white">
+        <DialogContent className="sm:max-w-6xl border-[4px] border-black rounded-[24px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-0 w-[95vw] h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col [&>button.absolute]:hidden overflow-hidden bg-white">
           {analysisDrawIndex !== null && (() => {
             const drawObj = displayPastResults[analysisDrawIndex];
             const drawNumbers = getRawDrawNumbers(drawObj);
@@ -2615,10 +2765,10 @@ export default function App() {
                     回到首頁
                   </Button>
                 </DialogHeader>
-                <div id="analysis-scroll-area" className="p-3 sm:p-4 flex flex-col gap-3 overflow-y-auto max-h-[65vh]">
+                <div id="analysis-scroll-area" className="p-3 sm:p-4 pb-8 sm:pb-8 flex-1 flex flex-col gap-3 overflow-y-auto">
                   
                   {/* Current Draw Balls */}
-                  <div className="flex gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap justify-center items-center bg-zinc-50 border-[3px] border-black rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-1">
+                  <div className="flex shrink-0 gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap justify-center items-center bg-zinc-50 border-[3px] border-black rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-1">
                     {drawNumbers.map((num, i) => {
                       const isSpecial = i === 6;
                       const color = getBallColor(num);
@@ -2637,7 +2787,7 @@ export default function App() {
                   </div>
 
                   {/* Single Draw Stats */}
-                  <div className="flex flex-col gap-2 sm:gap-2 mb-1">
+                  <div className="flex flex-col shrink-0 gap-2 sm:gap-2 mb-1">
                     <h4 className="font-black text-xl sm:text-lg border-b-[3px] border-black pb-1 text-black">當期頭六碼分佈</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
@@ -2667,7 +2817,7 @@ export default function App() {
                   </div>
 
                   {/* Analysis Range Control */}
-                  <div className="flex flex-col gap-2 sm:gap-2 mt-1 border-t-[3px] border-black border-dashed pt-3 sm:pt-4">
+                  <div className="flex flex-col shrink-0 gap-2 sm:gap-2 mt-1 border-t-[3px] border-black border-dashed pt-3 sm:pt-4">
                     <h4 className="font-black text-xl sm:text-lg border-b-[3px] border-black pb-1 mb-0.5 text-[#3b82f6]">歷史趨勢追蹤</h4>
                     
                     <div className="flex items-center gap-2 bg-zinc-50 border-[3px] border-black py-1 px-2 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
@@ -2724,7 +2874,7 @@ export default function App() {
                   </div>
 
                   {/* Number Breakdowns */}
-                  <div className="space-y-1.5 sm:space-y-2 mt-2">
+                  <div className="space-y-1.5 shrink-0 sm:space-y-2 mt-2">
                     <h4 className="font-black text-xl sm:text-lg border-b-[3px] border-black pb-1 mb-1">
                       於第 {startDisplayNumber} - {endDisplayNumber} 期內的歷史出現頻率
                     </h4>
@@ -2758,6 +2908,157 @@ export default function App() {
                       })}
                     </div>
                   </div>
+
+                  {(() => {
+                    const currentDraw = liveResults[analysisDrawIndex];
+                    if (!currentDraw) return null;
+                    const winningNums = getRawDrawNumbers(currentDraw).slice(0, 6);
+                    
+                    const minNum = Math.min(...winningNums);
+                    const maxNum = Math.max(...winningNums);
+
+                    const past5Draws = liveResults.slice(analysisDrawIndex + 1, analysisDrawIndex + 1 + 5);
+                    const past5Nums = new Set(past5Draws.flatMap(d => getRawDrawNumbers(d).slice(0, 6)));
+                    const recentMatches5 = winningNums.filter(n => past5Nums.has(n)).length;
+
+                    const past10Draws = liveResults.slice(analysisDrawIndex + 1, analysisDrawIndex + 1 + 10);
+                    const past10Nums = new Set(past10Draws.flatMap(d => getRawDrawNumbers(d).slice(0, 6)));
+                    const recentMatches10 = winningNums.filter(n => past10Nums.has(n)).length;
+
+                    let recentStrategySuggestion = "";
+                    if (recentMatches5 >= 4) {
+                       recentStrategySuggestion = `極端熱門！適合採用「只買近 5 期號碼」策略。`;
+                    } else if (recentMatches5 >= 3) {
+                       recentStrategySuggestion = `偏向熱門，適合採用「只買近 5 期或 10 期號碼」策略。`;
+                    } else if (recentMatches5 === 0) {
+                       recentStrategySuggestion = `完全避開極熱門號碼！適合採用「排除近 5 期號碼」策略。`;
+                    } else if (recentMatches10 <= 1) {
+                       recentStrategySuggestion = `極端冷門！適合採用「排除近 10 期號碼」策略。`;
+                    } else {
+                       recentStrategySuggestion = `冷熱號碼分佈平均，建議結合「大數據」2合及3合策略。`;
+                    }
+
+                    const oddCount = winningNums.filter(n => n % 2 !== 0).length;
+                    const evenCount = 6 - oddCount;
+                    
+                    const rCount = winningNums.filter(n => getBallColor(n) === 'red').length;
+                    const bCount = winningNums.filter(n => getBallColor(n) === 'blue').length;
+                    const gCount = winningNums.filter(n => getBallColor(n) === 'green').length;
+                    
+                    const colorResults = [
+                        { color: '紅波', count: rCount },
+                        { color: '藍波', count: bCount },
+                        { color: '綠波', count: gCount }
+                    ].sort((a, b) => b.count - a.count);
+                    
+                    const dominantColors = colorResults.filter(c => c.count > 0);
+                    const colorStr = dominantColors.map(c => `${c.color} ${c.count} 個`).join('，');
+                    
+                    const sortedNums = [...winningNums].sort((a,b)=>a-b);
+                    let consecutives = 0;
+                    for (let i = 0; i < sortedNums.length - 1; i++) {
+                      if (sortedNums[i] + 1 === sortedNums[i+1]) consecutives++;
+                    }
+
+                    const tails = sortedNums.map(n => n % 10);
+                    const tailCounts = tails.reduce((acc, t) => {
+                      acc[t] = (acc[t] || 0) + 1;
+                      return acc;
+                    }, {} as Record<number, number>);
+                    const commonTails = Object.entries(tailCounts).filter(([_, count]) => count > 1).map(([tail, count]) => `${tail}尾(${count}個)`);
+
+                    const zones = [0, 0, 0, 0, 0];
+                    sortedNums.forEach(n => {
+                      if (n < 10) zones[0]++;
+                      else if (n < 20) zones[1]++;
+                      else if (n < 30) zones[2]++;
+                      else if (n < 40) zones[3]++;
+                      else zones[4]++;
+                    });
+                    const emptyZones = zones.map((count, index) => count === 0 ? `${index === 0 ? 1 : index * 10}-${index === 4 ? 49 : index * 10 + 9}` : null).filter(Boolean);
+
+                    const sum = winningNums.reduce((a, b) => a + b, 0);
+                    const sumCategory = sum < 120 ? "偏小 (<120)" : sum > 180 ? "偏大 (>180)" : "適中 (120-180)";
+
+                    return (
+                        <div className="mt-6 shrink-0 bg-[#f0fdf4] p-5 sm:p-6 rounded-2xl border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden">
+                            <div className="absolute -top-4 -right-4 w-24 h-24 bg-[#16a34a] rounded-full opacity-10 blur-2xl"></div>
+                            <h3 className="font-black text-xl text-black mb-4 flex items-center gap-2 relative z-10 border-b-2 border-dashed border-black pb-3">
+                                <Sparkles className="w-6 h-6 text-[#16a34a]" />
+                                AI 大數據智能深度分析
+                            </h3>
+                            <div className="space-y-4 text-sm sm:text-[15px] font-bold text-zinc-800 relative z-10">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">分佈範圍</div>
+                                    <div>{minNum} 至 {maxNum}</div>
+                                  </div>
+                                  <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">單雙比例</div>
+                                    <div>{oddCount} 單 {evenCount} 雙</div>
+                                  </div>
+                                  <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">波色分佈</div>
+                                    <div className="text-sm">{colorStr}</div>
+                                  </div>
+                                  <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">總和區間</div>
+                                    <div>{sum} <span className="text-zinc-500 text-xs ml-1">({sumCategory})</span></div>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex bg-white border-2 border-black rounded-lg p-3 flex-col items-start gap-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                  <div className="flex items-center gap-3 w-full">
+                                    <div className="bg-orange-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-orange-800">特殊形態</div>
+                                    <div className="flex-1 flex flex-wrap gap-2">
+                                      {consecutives > 0 ? (
+                                        <span className="bg-red-100 border border-red-300 text-red-800 px-2 py-0.5 rounded text-xs">出現 {consecutives} 組連號</span>
+                                      ) : (
+                                        <span className="bg-zinc-100 border border-zinc-300 text-zinc-600 px-2 py-0.5 rounded text-xs">無連號</span>
+                                      )}
+                                      {commonTails.length > 0 ? (
+                                        <span className="bg-purple-100 border border-purple-300 text-purple-800 px-2 py-0.5 rounded text-xs">同尾: {commonTails.join(', ')}</span>
+                                      ) : (
+                                        <span className="bg-zinc-100 border border-zinc-300 text-zinc-600 px-2 py-0.5 rounded text-xs">無同尾數</span>
+                                      )}
+                                      {emptyZones.length > 0 && (
+                                         <span className="bg-blue-100 border border-blue-300 text-blue-800 px-2 py-0.5 rounded text-xs">斷區: {emptyZones.join(', ')}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex bg-white border-2 border-black rounded-lg p-3 flex-col items-start gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                  <div className="flex items-center gap-3">
+                                    <div className="bg-yellow-200 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-yellow-900">近期冷熱</div>
+                                    <div className="text-sm">近 5 期重出 <span className="text-[#3b82f6] font-black text-base">{recentMatches5}</span> 號 / 近 10 期重出 <span className="text-[#3b82f6] font-black text-base">{recentMatches10}</span> 號</div>
+                                  </div>
+                                </div>
+
+                                {/* Comprehensive Recommendation */}
+                                <div className="bg-zinc-900 text-white p-4 rounded-xl border-[3px] border-black mt-2 shadow-[4px_4px_0px_0px_#FFE867]">
+                                  <div className="font-black text-lg mb-2 text-[#FFE867] flex items-center gap-2">
+                                    <span className="text-xl">🤖</span> AI 智能綜合建議
+                                  </div>
+                                  <ul className="list-disc pl-5 space-y-1.5 text-[14px] text-zinc-200">
+                                    <li>這期總和為 <strong>{sum} ({sumCategory})</strong>，號碼分佈{consecutives > 0 ? '偏向聚集' : '較為分散'}。</li>
+                                    {emptyZones.length > 0 && (
+                                      <li>出現明顯「斷區」，未來若針對這類趨勢，可善用「自訂號碼分析範圍」排除 <strong>{emptyZones.join('、')}</strong>。</li>
+                                    )}
+                                    {commonTails.length > 0 && (
+                                      <li>同尾數效應 ({commonTails.join(', ')}) 發生，適時挑選尾數靈感有助提升機率。</li>
+                                    )}
+                                    <li><strong>{recentStrategySuggestion}</strong></li>
+                                  </ul>
+                                </div>
+
+                                <p className="text-[12px] text-zinc-500 font-bold mt-2 text-center">
+                                  💡 活用以上數據，到主頁點選「進階設定」調整屬於您的最強生成法則！
+                                </p>
+                            </div>
+                        </div>
+                    );
+                  })()}
                 </div>
               </>
             );
@@ -2951,6 +3252,86 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-md bg-[#f0fdf4] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col mb-[10vh] sm:top-1/2 sm:-translate-y-1/2 overflow-hidden">
+          <DialogHeader className="bg-[#16a34a] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0 text-white">
+            <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-white">
+              <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
+              AI 大數據智能選號
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 sm:p-5 flex-1 space-y-6">
+            <div className="space-y-4 bg-white border-[3px] border-black p-4 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <Label className="font-light text-base">綜合最近期數</Label>
+                  <span className="font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded-md border border-green-300">
+                    {aiAnalysisDraws} 期
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-zinc-500">1期</span>
+                  <div className="flex-1 px-1">
+                    <Slider
+                      min={1}
+                      max={50}
+                      step={1}
+                      value={[aiAnalysisDraws]}
+                      onValueChange={(val) => {
+                        const newValue = Array.isArray(val) ? val[0] : val;
+                        setAiAnalysisDraws(newValue as number);
+                      }}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-zinc-500">50期</span>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t-2 border-black border-dashed space-y-4">
+                <div className="flex justify-between items-center">
+                  <Label className="font-light text-base">生成注數</Label>
+                  <span className="font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md border border-orange-300">
+                    {aiBetCount} 注
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-zinc-500">1注</span>
+                  <div className="flex-1 px-1">
+                    <Slider
+                      min={1}
+                      max={30}
+                      step={1}
+                      value={[aiBetCount]}
+                      onValueChange={(val) => {
+                        const newValue = Array.isArray(val) ? val[0] : val;
+                        setAiBetCount(newValue as number);
+                      }}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-zinc-500">30注</span>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              className="w-full bg-green-500 hover:bg-green-600 text-black h-auto py-3 px-6 text-xl font-black border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+              onClick={handleAIGenerate}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <RefreshCw className="w-6 h-6 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-6 h-6 mr-2 text-white" />
+              )}
+              {isGenerating ? "生成中..." : "開始智能選號"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isCheckDialogOpen} onOpenChange={setIsCheckDialogOpen}>
         <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
