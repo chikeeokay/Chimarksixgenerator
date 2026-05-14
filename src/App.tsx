@@ -338,15 +338,52 @@ export default function App() {
       setUse3Combos(willUse3Combos);
       setCombo3Count(1);
       
-      const comboBetCount = Math.max(1, Math.round(aiBetCount * 0.2));
+      const comboPercentage = (Math.random() * 0.25 + 0.15); // Between 15% and 40%
+      const comboBetCount = Math.max(1, Math.round(aiBetCount * comboPercentage));
       const normalBetCount = Math.max(0, aiBetCount - comboBetCount);
+
+      const strategyType = Math.floor(Math.random() * 3);
+      let filterExplanation = "";
+      let complexStrategy = { enabled: false, excludeRanges: [] as any[], includeRanges: [] as any[] };
+
+      if (strategyType === 0) {
+        filterExplanation = `溫度過濾 (保守防守)：排除近 1 期的大熱號碼，並策略性保留近期微熱門號碼（第 2 - 5 期內曾出現的數字）。`;
+        complexStrategy = {
+          enabled: true,
+          excludeRanges: [{ start: 1, end: 1 }],
+          includeRanges: [{ start: 2, end: 5 }]
+        };
+      } else if (strategyType === 1) {
+        filterExplanation = `溫度過濾 (乘勝追擊)：捕捉近期旺勢，鎖定近 1 - 3 期內頻繁出現的「當炒」大熱號碼。`;
+        complexStrategy = {
+          enabled: true,
+          excludeRanges: [],
+          includeRanges: [{ start: 1, end: 3 }]
+        };
+      } else {
+        filterExplanation = `溫度過濾 (逆向博冷)：完全排除近 6 期曾開出的所有大熱及微熱號碼，專注捕捉沉寂已久的「冷門」號碼，博取高回報。`;
+        complexStrategy = {
+          enabled: true,
+          excludeRanges: [{ start: 1, end: 6 }],
+          includeRanges: []
+        };
+      }
+
+      const useTop2Colors = Math.random() > 0.6;
+      const aiColors = useTop2Colors ? [sortedColors[0], sortedColors[1]] : ["red", "blue", "green"];
+      const aiColorRatio = useTop2Colors ? Math.floor(Math.random() * 3) + 2 : undefined;
+      const colorExplanation = useTop2Colors 
+        ? `波色決策：近期最多出現的是${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波，AI 將鎖定這兩種波色並按比例分配。` 
+        : `波色決策：近期波色分佈平均，AI 將維持紅白藍均勻分配策略。`;
+
+      const roundedComboPct = Math.round(comboPercentage * 100);
 
       const explanations = [
         `分析了過去 ${aiAnalysisDraws} 期的開彩數據，找出隱藏趨勢。`,
         `單雙趨勢：近期${oddCount >= evenCount ? '單' : '雙'}數偏多，因此偏向採用 ${preferOdd}單 ${6-preferOdd}雙 組合。`,
-        `波色決策：近期最多出現的是${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波，AI 將維持均勻分配策略。`,
-        `溫度過濾：排除近 1 期的大熱號碼，並策略性保留近期微熱門號碼（第 2 - 5 期內曾出現的數字）。`,
-        `大數據演算法：從 ${aiBetCount} 注中撥出約 20% (${comboBetCount} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合，避免過度依賴單一策略；其餘 ${normalBetCount} 注則採用穩健的機率分佈。`
+        colorExplanation,
+        filterExplanation,
+        `大數據演算法：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (${comboBetCount} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合；其餘 ${normalBetCount} 注則採用穩健的機率分佈。`
       ];
       setAiReasoning(explanations);
       
@@ -356,19 +393,15 @@ export default function App() {
         onlyEven: false,
         preferredOddCount: preferOdd,
         preferredEvenCount: 6 - preferOdd,
-        colors: ["red", "blue", "green"] as BallColor[],
-        colorRatioOption: 3,
+        colors: aiColors as BallColor[],
+        colorRatioOption: aiColorRatio,
         recentMode: "none" as const,
         recentCount: 5,
         recentDraws: liveResults.map(getRawDrawNumbers),
         includeSpecial: false,
         mustInclude: [],
         excludedNumbers: [],
-        complexRecentStrategy: {
-          enabled: true,
-          excludeRanges: [],
-          includeRanges: [{ start: 2, end: 5 }]
-        },
+        complexRecentStrategy: complexStrategy,
         excludeUnseenInRecent: undefined,
         excludeUnseenIncludeSpecial: false,
         comboAnalysisDrawCount: aiAnalysisDraws
@@ -381,7 +414,14 @@ export default function App() {
         combo2Count: 0,
         use3Combos: false,
         combo3Count: 0,
-      }).map(bet => ({ ...bet, explanations: [`大數據演算法：此注採用純機率分佈，符合 ${preferOdd}單${6-preferOdd}雙 加均勻波色策略，以及過濾大熱區間。`] })) : [];
+      }).map(bet => {
+        let expls = [];
+        expls.push(`大數據演算法：此注採用純機率分佈。`);
+        expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
+        expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
+        expls.push(strategyType === 0 ? `溫度過濾：保守防守 - 排除近1期大熱，保留近2-5期微熱。` : strategyType === 1 ? `溫度過濾：乘勝追擊 - 鎖定近1-3期頻繁出現的大熱號碼。` : `溫度過濾：逆向博冷 - 完全排除近6期曾開出的大熱及微熱號碼。`);
+        return { ...bet, explanations: expls };
+      }) : [];
 
       const comboBets = comboBetCount > 0 ? generateBets({
         ...baseGenerateOptions,
@@ -390,10 +430,14 @@ export default function App() {
         combo2Count: 3,
         use3Combos: willUse3Combos,
         combo3Count: 1,
-      }).map(bet => ({
-        ...bet,
-        explanations: (bet.explanations && bet.explanations.length > 0) ? bet.explanations : [`大數據演算法：此注採用 2合/3合 尋找最高勝率組合，並符合 ${preferOdd}單${6-preferOdd}雙 加均勻波色策略。`]
-      })) : [];
+      }).map(bet => {
+        let expls = (bet.explanations && bet.explanations.length > 0) ? [...bet.explanations] : [];
+        expls.push(`大數據演算法：使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`);
+        expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
+        expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
+        expls.push(strategyType === 0 ? `溫度過濾：保守防守 - 排除近1期大熱，保留近2-5期微熱。` : strategyType === 1 ? `溫度過濾：乘勝追擊 - 鎖定近1-3期頻繁出現的大熱號碼。` : `溫度過濾：逆向博冷 - 完全排除近6期曾開出的大熱及微熱號碼。`);
+        return { ...bet, explanations: expls };
+      }) : [];
       
       const bets = [...normalBets, ...comboBets];
 
@@ -2498,8 +2542,8 @@ export default function App() {
                   {generatedBets.map((bet, index) => (
                     <div
                       key={index}
-                      className="w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap cursor-pointer z-0"
-                      onClick={() => setViewingBetExpl({ index, bet })}
+                      className={`w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}
+                      onClick={() => isAiGenerated && setViewingBetExpl({ index, bet })}
                     >
                       <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
                         <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
@@ -2579,7 +2623,9 @@ export default function App() {
                     {excludedNumbers.length > 0 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除號碼: {excludedNumbers.join(', ')}</span>}
                     {luckyNumbers.length > 0 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">必含號碼: {luckyNumbers.join(', ')}</span>}
                     {enableComplexRecent && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定複雜近期區間</span>}
-                    <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
+                    {isAiGenerated && (
+                      <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
+                    )}
                   </div>
                 </div>
 
@@ -3068,31 +3114,60 @@ export default function App() {
 
 
       <Dialog open={isStrategyInfoOpen} onOpenChange={setIsStrategyInfoOpen}>
-        <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] bg-white text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2">
-          <DialogHeader className="bg-[#BAE6FD] border-b-4 border-black p-4">
+        <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-[500px] w-[95vw] bg-white text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2 flex flex-col max-h-[85vh]">
+          <DialogHeader className="bg-[#BAE6FD] border-b-4 border-black p-4 shrink-0">
             <DialogTitle className="text-xl font-black flex items-center justify-center gap-2">
               <Sparkles className="w-6 h-6 text-[#3b82f6]" />
               AI 大數據智能預測說明
             </DialogTitle>
           </DialogHeader>
-          <div className="p-6 text-sm font-bold text-zinc-700 space-y-4 text-left leading-relaxed">
-            <div className="bg-[#ffedd5] p-3 rounded-lg border-2 border-orange-200">
-              <h4 className="text-orange-600 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎲</span> 採用「2合」策略</h4>
-              <p className="text-zinc-800">
-                系統會從初步生成的 6 個號碼中，隨機抽取 1 至 3 個號碼作為「基數」。分析過去 100 期，找出與該基數同開機率最高的頭 6 個伴隨號碼 (2合組合)，隨機加入 1 個高機率號碼（變成 7 個號碼），最後隨機剔走 1 個原號碼變回 6 個。
+          <div className="p-5 text-sm font-bold text-zinc-700 text-left leading-relaxed overflow-y-auto min-h-0 flex-1 space-y-4 custom-scrollbar">
+            
+            <div className="bg-[#f0fdf4] p-3 rounded-lg border-2 border-green-200">
+              <h4 className="text-green-700 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🌡️</span> 溫度過濾策略 (每次生成隨機決策)</h4>
+              <ul className="list-disc pl-5 mt-1 space-y-1 text-zinc-800 font-medium">
+                <li><strong className="font-bold text-green-800">保守防守：</strong>排除近 1 期的大熱號碼，保留第 2 - 5 期的微熱號碼。</li>
+                <li><strong className="font-bold text-green-800">乘勝追擊：</strong>不排除近期，反而鎖定近 1 - 3 期頻繁出現的當炒大熱號碼。</li>
+                <li><strong className="font-bold text-green-800">逆向博冷：</strong>完全排除近 6 期出現過的大熱號碼，專挑久未出現的「冷門」號碼博取高回報！</li>
+              </ul>
+            </div>
+
+            <div className="bg-[#fdf4ff] p-3 rounded-lg border-2 border-fuchsia-200">
+              <h4 className="text-fuchsia-700 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎨</span> 顏色波色決策</h4>
+              <ul className="list-disc pl-5 mt-1 space-y-1 text-zinc-800 font-medium">
+                <li>大多數情況下會維持<strong className="font-bold">紅白藍三色均勻</strong>分配。</li>
+                <li>偶爾會根據近期最常開出的兩種波色，<strong className="font-bold">鎖定那兩種波色</strong>，並按比例投放資源（例如只買旺開的紅藍波）。</li>
+              </ul>
+            </div>
+
+            <div className="bg-[#fefce8] p-3 rounded-lg border-2 border-yellow-200">
+              <h4 className="text-yellow-700 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">📊</span> 大數據注數分配</h4>
+              <p className="text-zinc-800 font-medium">
+                在使用「2合 / 3合組合」策略的資源不再固定是 20%，而是會動態在 <strong className="font-bold text-yellow-800">15% 到 40%</strong> 之間浮動，幫助避免過度倚賴單一演算法。<br/>
+                （其餘注數會採用受溫度過濾、波色和單雙控制的純機率分佈）
               </p>
             </div>
-            <div className="bg-[#e0f2fe] p-3 rounded-lg border-2 border-blue-200">
-              <h4 className="text-blue-600 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎯</span> 採用「3合」策略</h4>
-              <p className="text-zinc-800">
-                系統會從初步生成的 6 個號碼中，隨機抽取 1 至 3 對號碼作為「基數組合」。分析過去 100 期，找出與該兩碼同開機率最高的頭 6 個伴隨號碼 (3合組合)，隨機加入 1 個高機率號碼（變成 7 個號碼），最後隨機剔走 1 個原號碼變回 6 個。
-              </p>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="bg-[#ffedd5] p-3 rounded-lg border-2 border-orange-200 flex-1">
+                <h4 className="text-orange-600 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎲</span> 採用「2合」策略</h4>
+                <p className="text-zinc-800 font-medium">
+                  系統會從初步生成的號碼中，隨機抽取 1 至 3 個號碼作為「基數」。分析過去期數數據，找出與該基數同開機率最高的頭 6 個伴隨號碼 (2合組合)，加入高機率號碼並隨機替換原號碼。
+                </p>
+              </div>
+              <div className="bg-[#e0f2fe] p-3 rounded-lg border-2 border-blue-200 flex-1">
+                <h4 className="text-blue-600 font-extrabold mb-1 flex items-center gap-1.5"><span className="text-lg">🎯</span> 採用「3合」策略</h4>
+                <p className="text-zinc-800 font-medium">
+                  系統會從初步生成的號碼中，隨機抽取 1 至 3 對號碼作為「基數組合」。找出與該兩碼同開機率最高的頭 6 個伴隨號碼 (3合組合)，加入高機率號碼並隨機替換原號碼。
+                </p>
+              </div>
             </div>
-            <p className="text-[12px] text-zinc-500 bg-white p-2 rounded border-2 border-zinc-200 mt-2">
-               * 系統在隨機剔走號碼時，會自動避開基數、新加入的高機率號碼及您指定的必出幸運號碼。
+            
+            <p className="text-[12px] text-zinc-500 bg-zinc-50 p-2 rounded border-2 border-zinc-200 mt-2 font-medium">
+               * 系統在隨機剔走 / 替換號碼時，會自動避開基數、新加入的高機率號碼及您指定的必出幸運號碼。
             </p>
           </div>
-          <DialogFooter className="p-4 bg-zinc-50 border-t-4 border-black flex justify-center">
+          <DialogFooter className="p-4 bg-zinc-50 border-t-4 border-black flex justify-center shrink-0">
             <Button
               className="bg-white border-2 border-black text-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-100 hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all px-8 rounded-xl"
               onClick={() => setIsStrategyInfoOpen(false)}
