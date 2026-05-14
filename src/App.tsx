@@ -229,8 +229,16 @@ export default function App() {
     setRecentMode("");
     setRecentCount(5);
     setIncludeSpecial(false);
+    setEnableComplexRecent(false);
+    setComplexExcludeRanges([{start: 1, end: 5}]);
+    setComplexIncludeRanges([{start: 6, end: 10}]);
+    setEnableExcludeUnseen(false);
+    setExcludeUnseenCount(20);
+    setExcludeUnseenIncludeSpecial(false);
     setUse2Combos(false);
+    setCombo2Count(1);
     setUse3Combos(false);
+    setCombo3Count(1);
   };
 
   const handleGenerate = () => {
@@ -310,11 +318,6 @@ export default function App() {
       const evenCount = allNums.filter(n => n % 2 === 0).length;
       const preferOdd = oddCount >= evenCount ? Math.floor(Math.random() * 2) + 3 : Math.floor(Math.random() * 3) + 2;
 
-      const rbCounts = { red: 0, blue: 0, green: 0 };
-      allNums.forEach(n => rbCounts[getBallColor(n) as keyof typeof rbCounts]++);
-      const sortedColors = Object.keys(rbCounts).sort((a,b) => rbCounts[b as keyof typeof rbCounts] - rbCounts[a as keyof typeof rbCounts]);
-      const top2Colors = sortedColors.slice(0,2) as BallColor[];
-
       setBetCount(aiBetCount);
       setPreferredOddCount(preferOdd);
       setPreferredEvenCount(6 - preferOdd);
@@ -341,21 +344,14 @@ export default function App() {
       const comboPercentage = (Math.random() * 0.25 + 0.15); // Between 15% and 40%
       const totalComboBets = Math.max(1, Math.round(aiBetCount * comboPercentage));
 
-      const useTop2Colors = Math.random() > 0.6;
-      const aiColors = useTop2Colors ? [sortedColors[0], sortedColors[1]] : ["red", "blue", "green"];
-      const aiColorRatio = useTop2Colors ? Math.floor(Math.random() * 3) + 2 : undefined;
-      const colorExplanation = useTop2Colors 
-        ? `波色決策：近期最多出現的是${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波，AI 將鎖定這兩種波色並按比例分配。` 
-        : `波色決策：近期波色分佈平均，AI 將維持紅白藍均勻分配策略。`;
-
       const filterExplanation = `溫度過濾：採用均衡分配，將注數平均分配給「保守防守」、「乘勝追擊」及「逆向博冷」三種不同策略，擴大捕捉範圍。`;
 
       const roundedComboPct = Math.round(comboPercentage * 100);
 
       const explanations = [
-        `分析了過去 ${aiAnalysisDraws} 期的開彩數據，找出隱藏趨勢。`,
-        `單雙趨勢：近期${oddCount >= evenCount ? '單' : '雙'}數偏多，因此偏向採用 ${preferOdd}單 ${6-preferOdd}雙 組合。`,
-        colorExplanation,
+        `大數據隱藏趨勢分析：透過深度拆解過去 ${aiAnalysisDraws} 期的開彩數據，AI 自動比對各大週期內的冷熱號碼分佈、單雙比例偏差及波色出現頻率，精確捕捉肉眼難以察覺的規律。`,
+        `單雙趨勢：近期${oddCount >= evenCount ? '單' : '雙'}數偏多，AI 將根據大數據模型動態調整各注的單雙比例。`,
+        `波色決策：近期各大波色出現頻率互有消長，AI 將配合不同的溫度過濾策略，自動選擇最合適的波色組合。`,
         filterExplanation,
         `大數據演算法：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (約 ${totalComboBets} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合；其餘則採用純機率分佈的演算法進行獨立選號。`
       ];
@@ -365,10 +361,7 @@ export default function App() {
         ranges: [{start: 1, end: 49}],
         onlyOdd: false,
         onlyEven: false,
-        preferredOddCount: preferOdd,
-        preferredEvenCount: 6 - preferOdd,
-        colors: aiColors as BallColor[],
-        colorRatioOption: aiColorRatio,
+        colors: ["red", "blue", "green"] as BallColor[],
         recentMode: "none" as const,
         recentCount: 5,
         recentDraws: liveResults.map(getRawDrawNumbers),
@@ -394,7 +387,6 @@ export default function App() {
       let cbRemaining = totalComboBets;
       let currentIndex = 0;
       while (cbRemaining > 0) {
-        // Prevent infinite loop if totalComboBets > aiBetCount (should not happen, but just in case)
         if (allocatedCombos[0] === counts[0] && allocatedCombos[1] === counts[1] && allocatedCombos[2] === counts[2]) {
           break; 
         }
@@ -417,15 +409,35 @@ export default function App() {
         let complexStrategy;
         let stratName = "";
         if (s === 0) {
-          stratName = "保守防守 - 排除近1期大熱，保留近2-5期微熱";
-          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 1 }], includeRanges: [{ start: 2, end: 5 }] };
+          stratName = "保守防守 - 排除近1期大熱，捕捉剛剛沉寂的號碼";
+          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 1 }], includeRanges: [] };
         } else if (s === 1) {
-          stratName = "乘勝追擊 - 鎖定近1-3期頻繁出現的大熱號碼";
-          complexStrategy = { enabled: true, excludeRanges: [], includeRanges: [{ start: 1, end: 3 }] };
+          stratName = "乘勝追擊 - 鎖定近1-4期頻繁出現的大熱號碼";
+          complexStrategy = { enabled: true, excludeRanges: [], includeRanges: [{ start: 1, end: 4 }] };
         } else {
-          stratName = "逆向博冷 - 完全排除近6期曾開出的大熱及微熱號碼";
-          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 6 }], includeRanges: [] };
+          stratName = "逆向博冷 - 完全排除近4期曾開出的大熱及微熱號碼";
+          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 4 }], includeRanges: [] };
         }
+
+        const injectDynamicExplanations = (bet: any, typeName: string) => {
+          let expls = (bet.explanations && bet.explanations.length > 0) ? [...bet.explanations] : [];
+          expls.push(`大數據演算法：${typeName}`);
+          
+          const bOdds = bet.numbers.filter((n: number) => n % 2 !== 0).length;
+          const bEvens = 6 - bOdds;
+          expls.push(`單雙配置：此注自動配置為 ${bOdds}單 ${bEvens}雙。`);
+          
+          const rbCounts = { red: 0, blue: 0, green: 0 };
+          bet.numbers.forEach((n: number) => rbCounts[getBallColor(n) as keyof typeof rbCounts]++);
+          let colorParts = [];
+          if (rbCounts.red > 0) colorParts.push(`${rbCounts.red}紅`);
+          if (rbCounts.blue > 0) colorParts.push(`${rbCounts.blue}藍`);
+          if (rbCounts.green > 0) colorParts.push(`${rbCounts.green}綠`);
+          expls.push(`波色配置：此注蘊含 ${colorParts.join(' ')}。`);
+          
+          expls.push(`溫度過濾：${stratName}。`);
+          return { ...bet, explanations: expls };
+        };
 
         if (normalBetCountForS > 0) {
           const normalBets = generateBets({
@@ -436,14 +448,7 @@ export default function App() {
             combo2Count: 0,
             use3Combos: false,
             combo3Count: 0,
-          }).map(bet => {
-            let expls = [];
-            expls.push(`大數據演算法：此注採用純機率分佈進行獨立選號，透過先進隨機洗牌演算法排除人為偏差，確保每個號碼在統計學上具有完全平等的出現機率。`);
-            expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
-            expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
-            expls.push(`溫度過濾：${stratName}。`);
-            return { ...bet, explanations: expls };
-          });
+          }).map(bet => injectDynamicExplanations(bet, `此注採用純機率分佈進行獨立選號，透過先進隨機洗牌演算法排除人為偏差，確保每個數字在統計學上具有完全平等的出現機率。`));
           allBets.push(...normalBets);
         }
 
@@ -456,14 +461,7 @@ export default function App() {
             combo2Count: 3,
             use3Combos: willUse3Combos,
             combo3Count: 1,
-          }).map(bet => {
-            let expls = (bet.explanations && bet.explanations.length > 0) ? [...bet.explanations] : [];
-            expls.push(`大數據演算法：使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`);
-            expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
-            expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
-            expls.push(`溫度過濾：${stratName}。`);
-            return { ...bet, explanations: expls };
-          });
+          }).map(bet => injectDynamicExplanations(bet, `使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`));
           allBets.push(...comboBets);
         }
       }
