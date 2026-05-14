@@ -339,35 +339,7 @@ export default function App() {
       setCombo3Count(1);
       
       const comboPercentage = (Math.random() * 0.25 + 0.15); // Between 15% and 40%
-      const comboBetCount = Math.max(1, Math.round(aiBetCount * comboPercentage));
-      const normalBetCount = Math.max(0, aiBetCount - comboBetCount);
-
-      const strategyType = Math.floor(Math.random() * 3);
-      let filterExplanation = "";
-      let complexStrategy = { enabled: false, excludeRanges: [] as any[], includeRanges: [] as any[] };
-
-      if (strategyType === 0) {
-        filterExplanation = `溫度過濾 (保守防守)：排除近 1 期的大熱號碼，並策略性保留近期微熱門號碼（第 2 - 5 期內曾出現的數字）。`;
-        complexStrategy = {
-          enabled: true,
-          excludeRanges: [{ start: 1, end: 1 }],
-          includeRanges: [{ start: 2, end: 5 }]
-        };
-      } else if (strategyType === 1) {
-        filterExplanation = `溫度過濾 (乘勝追擊)：捕捉近期旺勢，鎖定近 1 - 3 期內頻繁出現的「當炒」大熱號碼。`;
-        complexStrategy = {
-          enabled: true,
-          excludeRanges: [],
-          includeRanges: [{ start: 1, end: 3 }]
-        };
-      } else {
-        filterExplanation = `溫度過濾 (逆向博冷)：完全排除近 6 期曾開出的所有大熱及微熱號碼，專注捕捉沉寂已久的「冷門」號碼，博取高回報。`;
-        complexStrategy = {
-          enabled: true,
-          excludeRanges: [{ start: 1, end: 6 }],
-          includeRanges: []
-        };
-      }
+      const totalComboBets = Math.max(1, Math.round(aiBetCount * comboPercentage));
 
       const useTop2Colors = Math.random() > 0.6;
       const aiColors = useTop2Colors ? [sortedColors[0], sortedColors[1]] : ["red", "blue", "green"];
@@ -376,6 +348,8 @@ export default function App() {
         ? `波色決策：近期最多出現的是${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波，AI 將鎖定這兩種波色並按比例分配。` 
         : `波色決策：近期波色分佈平均，AI 將維持紅白藍均勻分配策略。`;
 
+      const filterExplanation = `溫度過濾：採用均衡分配，將注數平均分配給「保守防守」、「乘勝追擊」及「逆向博冷」三種不同策略，擴大捕捉範圍。`;
+
       const roundedComboPct = Math.round(comboPercentage * 100);
 
       const explanations = [
@@ -383,7 +357,7 @@ export default function App() {
         `單雙趨勢：近期${oddCount >= evenCount ? '單' : '雙'}數偏多，因此偏向採用 ${preferOdd}單 ${6-preferOdd}雙 組合。`,
         colorExplanation,
         filterExplanation,
-        `大數據演算法：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (${comboBetCount} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合；其餘 ${normalBetCount} 注則採用穩健的機率分佈。`
+        `大數據演算法：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (約 ${totalComboBets} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合；其餘則採用純機率分佈的演算法進行獨立選號。`
       ];
       setAiReasoning(explanations);
       
@@ -401,48 +375,101 @@ export default function App() {
         includeSpecial: false,
         mustInclude: [],
         excludedNumbers: [],
-        complexRecentStrategy: complexStrategy,
         excludeUnseenInRecent: undefined,
         excludeUnseenIncludeSpecial: false,
         comboAnalysisDrawCount: aiAnalysisDraws
       };
 
-      const normalBets = normalBetCount > 0 ? generateBets({
-        ...baseGenerateOptions,
-        count: normalBetCount,
-        use2Combos: false,
-        combo2Count: 0,
-        use3Combos: false,
-        combo3Count: 0,
-      }).map(bet => {
-        let expls = [];
-        expls.push(`大數據演算法：此注採用純機率分佈。`);
-        expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
-        expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
-        expls.push(strategyType === 0 ? `溫度過濾：保守防守 - 排除近1期大熱，保留近2-5期微熱。` : strategyType === 1 ? `溫度過濾：乘勝追擊 - 鎖定近1-3期頻繁出現的大熱號碼。` : `溫度過濾：逆向博冷 - 完全排除近6期曾開出的大熱及微熱號碼。`);
-        return { ...bet, explanations: expls };
-      }) : [];
+      const counts = [
+        Math.floor(aiBetCount / 3),
+        Math.floor(aiBetCount / 3),
+        Math.floor(aiBetCount / 3)
+      ];
+      const remainder = aiBetCount % 3;
+      for (let i = 0; i < remainder; i++) {
+        counts[i]++;
+      }
 
-      const comboBets = comboBetCount > 0 ? generateBets({
-        ...baseGenerateOptions,
-        count: comboBetCount,
-        use2Combos: true,
-        combo2Count: 3,
-        use3Combos: willUse3Combos,
-        combo3Count: 1,
-      }).map(bet => {
-        let expls = (bet.explanations && bet.explanations.length > 0) ? [...bet.explanations] : [];
-        expls.push(`大數據演算法：使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`);
-        expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
-        expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
-        expls.push(strategyType === 0 ? `溫度過濾：保守防守 - 排除近1期大熱，保留近2-5期微熱。` : strategyType === 1 ? `溫度過濾：乘勝追擊 - 鎖定近1-3期頻繁出現的大熱號碼。` : `溫度過濾：逆向博冷 - 完全排除近6期曾開出的大熱及微熱號碼。`);
-        return { ...bet, explanations: expls };
-      }) : [];
-      
-      const bets = [...normalBets, ...comboBets];
+      let allocatedCombos = [0, 0, 0];
+      let cbRemaining = totalComboBets;
+      let currentIndex = 0;
+      while (cbRemaining > 0) {
+        // Prevent infinite loop if totalComboBets > aiBetCount (should not happen, but just in case)
+        if (allocatedCombos[0] === counts[0] && allocatedCombos[1] === counts[1] && allocatedCombos[2] === counts[2]) {
+          break; 
+        }
+        if (allocatedCombos[currentIndex] < counts[currentIndex]) {
+          allocatedCombos[currentIndex]++;
+          cbRemaining--;
+        }
+        currentIndex = (currentIndex + 1) % 3;
+      }
+
+      let allBets: any[] = [];
+
+      for (let s = 0; s < 3; s++) {
+        let countForStrategy = counts[s];
+        if (countForStrategy <= 0) continue;
+        
+        let comboBetCountForS = allocatedCombos[s];
+        let normalBetCountForS = countForStrategy - comboBetCountForS;
+
+        let complexStrategy;
+        let stratName = "";
+        if (s === 0) {
+          stratName = "保守防守 - 排除近1期大熱，保留近2-5期微熱";
+          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 1 }], includeRanges: [{ start: 2, end: 5 }] };
+        } else if (s === 1) {
+          stratName = "乘勝追擊 - 鎖定近1-3期頻繁出現的大熱號碼";
+          complexStrategy = { enabled: true, excludeRanges: [], includeRanges: [{ start: 1, end: 3 }] };
+        } else {
+          stratName = "逆向博冷 - 完全排除近6期曾開出的大熱及微熱號碼";
+          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 6 }], includeRanges: [] };
+        }
+
+        if (normalBetCountForS > 0) {
+          const normalBets = generateBets({
+            ...baseGenerateOptions,
+            complexRecentStrategy: complexStrategy,
+            count: normalBetCountForS,
+            use2Combos: false,
+            combo2Count: 0,
+            use3Combos: false,
+            combo3Count: 0,
+          }).map(bet => {
+            let expls = [];
+            expls.push(`大數據演算法：此注採用純機率分佈進行獨立選號，透過先進隨機洗牌演算法排除人為偏差，確保每個號碼在統計學上具有完全平等的出現機率。`);
+            expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
+            expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
+            expls.push(`溫度過濾：${stratName}。`);
+            return { ...bet, explanations: expls };
+          });
+          allBets.push(...normalBets);
+        }
+
+        if (comboBetCountForS > 0) {
+          const comboBets = generateBets({
+            ...baseGenerateOptions,
+            complexRecentStrategy: complexStrategy,
+            count: comboBetCountForS,
+            use2Combos: true,
+            combo2Count: 3,
+            use3Combos: willUse3Combos,
+            combo3Count: 1,
+          }).map(bet => {
+            let expls = (bet.explanations && bet.explanations.length > 0) ? [...bet.explanations] : [];
+            expls.push(`大數據演算法：使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`);
+            expls.push(`單雙配置：符合 ${preferOdd}單${6-preferOdd}雙 比例。`);
+            expls.push(useTop2Colors ? `波色配置：採用鎖定 ${sortedColors[0] === 'red' ? '紅' : sortedColors[0] === 'blue' ? '藍' : '綠'}波及${sortedColors[1] === 'red' ? '紅' : sortedColors[1] === 'blue' ? '藍' : '綠'}波。` : `波色配置：維持紅白藍波均勻分配。`);
+            expls.push(`溫度過濾：${stratName}。`);
+            return { ...bet, explanations: expls };
+          });
+          allBets.push(...comboBets);
+        }
+      }
 
       setTimeout(() => {
-        setGeneratedBets(bets);
+        setGeneratedBets(allBets);
         setUndoStack([]);
         setIsGenerating(false);
       }, 400);
@@ -2597,34 +2624,55 @@ export default function App() {
                 <div className="mt-4 sm:mt-6 bg-[#ffedd5] border-[3px] sm:border-4 border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-2xl mx-auto w-full text-center">
                   <h3 className="font-black text-lg mb-1 flex items-center justify-center gap-1.5 min-w-0"><Sparkles className="w-5 h-5 text-orange-500 shrink-0" /> 全部生成設定筆記</h3>
                   <div className="text-sm font-bold text-zinc-700 flex flex-wrap gap-2 justify-center mt-2">
-                    {isAiGenerated && (
-                      <div className="w-full text-left bg-[#bbf7d0] border border-[#16a34a] rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
-                        <div className="font-black text-[#166534] mb-2 flex items-center gap-1.5 text-base sm:text-lg">
-                          <Sparkles className="w-5 h-5 shrink-0" /> 
-                          AI 大數據智能選號 (綜合近期 {aiAnalysisDrawsUsed} 期) - 分析筆記：
+                    {isAiGenerated ? (
+                      <>
+                        <div className="w-full text-left bg-[#bbf7d0] border border-[#16a34a] rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
+                          <div className="font-black text-[#166534] mb-2 flex items-center gap-1.5 text-base sm:text-lg">
+                            <Sparkles className="w-5 h-5 shrink-0" /> 
+                            AI 大數據智能選號 (綜合近期 {aiAnalysisDrawsUsed} 期) - 分析筆記：
+                          </div>
+                          <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-[#166534] marker:text-[#166534]">
+                            {aiReasoning.map((reason, i) => (
+                              <li key={i}>{reason}</li>
+                            ))}
+                          </ul>
                         </div>
-                        <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-[#166534] marker:text-[#166534]">
-                          {aiReasoning.map((reason, i) => (
-                            <li key={i}>{reason}</li>
-                          ))}
+                        <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
+                      </>
+                    ) : (
+                      <div className="w-full text-left bg-white border-2 border-black rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
+                        <div className="font-black text-black mb-2 flex items-center gap-1.5 text-base sm:text-lg">
+                          <Settings2 className="w-5 h-5 shrink-0" /> 
+                          自定生成設定筆記：
+                        </div>
+                        <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-zinc-700">
+                          <li>
+                            號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
+                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent ? ' (純隨機生成，無其他過濾)' : ''}
+                          </li>
+                          {(preferredOddCount !== null || oddEven !== 'all') && (
+                            <li>
+                              單雙配置: {oddEven === 'all' ? '無限制' : oddEven === 'odd' ? '全單' : '全雙'}{preferredOddCount !== null ? ` (特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙)` : ''}
+                            </li>
+                          )}
+                          {colors.length < 3 && (
+                            <li>
+                              波色配置: {colors.length === 1 ? `全${colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'}波` : `特定波色比例 (${colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'} ${6 - (colorRatioOption || 3)} : ${colorRatioOption || 3} ${colors[1] === 'red' ? '紅' : colors[1] === 'blue' ? '藍' : '綠'})`}
+                            </li>
+                          )}
+                          {(use2Combos || use3Combos) && (
+                            <li>
+                              大數據策略: {use2Combos ? '2合策略 ' : ''}{use3Combos ? '3合策略' : ''}
+                            </li>
+                          )}
+                          {enableRecent && recentMode === "include" && <li>近期名單過濾: 只買近 {recentCount} 期號碼</li>}
+                          {enableRecent && recentMode === "exclude" && <li>近期名單過濾: 排除近 {recentCount} 期號碼</li>}
+                          {enableExcludeUnseen && <li>排除未開出過濾: 排除近 {excludeUnseenCount} 期內完全未開出的冷門號碼</li>}
+                          {enableComplexRecent && <li>複雜近期區間過濾: 已啟用</li>}
+                          {excludedNumbers.length > 0 && <li>排除號碼: {excludedNumbers.join(', ')}</li>}
+                          {luckyNumbers.length > 0 && <li>必含號碼: {luckyNumbers.join(', ')}</li>}
                         </ul>
                       </div>
-                    )}
-                    {preferredOddCount !== null && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 ({preferredOddCount}單 {preferredEvenCount}雙)</span>}
-                    {oddEven === 'odd' && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 (6單)</span>}
-                    {oddEven === 'even' && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定單雙比例 (6雙)</span>}
-                    {colors.length === 1 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定波色比例 (全{colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'})</span>}
-                    {colors.length === 2 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定波色比例 ({colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'} {6 - (colorRatioOption || 3)} : {colorRatioOption || 3} {colors[1] === 'red' ? '紅' : colors[1] === 'blue' ? '藍' : '綠'})</span>}
-                    {use3Combos && <span className="bg-[#FFE867] border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">大數據 3合策略</span>}
-                    {use2Combos && <span className="bg-[#FFE867] border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">大數據 2合策略</span>}
-                    {enableRecent && recentMode === "include" && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">只買近 {recentCount} 期號碼</span>}
-                    {enableRecent && recentMode === "exclude" && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除近 {recentCount} 期號碼</span>}
-                    {enableExcludeUnseen && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除近 {excludeUnseenCount} 期未出號碼</span>}
-                    {excludedNumbers.length > 0 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">排除號碼: {excludedNumbers.join(', ')}</span>}
-                    {luckyNumbers.length > 0 && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">必含號碼: {luckyNumbers.join(', ')}</span>}
-                    {enableComplexRecent && <span className="bg-white border-2 border-black px-2 py-0.5 rounded shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">特定複雜近期區間</span>}
-                    {isAiGenerated && (
-                      <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
                     )}
                   </div>
                 </div>
