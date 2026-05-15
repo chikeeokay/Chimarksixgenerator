@@ -2454,10 +2454,10 @@ export default function App() {
                       variant="default"
                       size="sm"
                       className="bg-[#FFE867] text-black hover:bg-[#FFD700] border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3"
-                      onClick={handleGenerate}
+                      onClick={isAiGenerated ? handleAIGenerate : handleGenerate}
                     >
                       <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                      重新生成
+                      {isAiGenerated ? "AI 重新生成" : "重新生成"}
                     </Button>
                     <div className="flex w-full sm:w-auto gap-1.5 sm:gap-2">
                       <Button
@@ -3310,11 +3310,11 @@ export default function App() {
           <h1 className="text-[40px] font-black tracking-widest mb-6 text-[#FFE867] leading-none">
             您的幸運號碼
           </h1>
-          <div className={`w-full ${generatedBets.length >= 13 ? 'grid grid-cols-3 gap-x-8 gap-y-5' : generatedBets.length >= 11 ? 'grid grid-cols-2 gap-x-8 gap-y-5' : 'flex flex-col gap-5'}`}>
+          <div className={`w-full ${generatedBets.length >= 13 ? 'grid grid-cols-3 gap-x-8 gap-y-5 justify-items-center' : generatedBets.length >= 11 ? 'grid grid-cols-2 gap-x-8 gap-y-5 justify-items-center' : 'flex flex-col gap-5 items-center'}`}>
             {generatedBets.map((bet, index) => (
-              <div key={index} className="flex items-center w-full bg-white border-[4px] border-black rounded-3xl h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-2 relative overflow-visible">
-                <div className="flex items-center gap-1 w-full justify-between pr-2">
-                  <div className="text-2xl font-black text-black w-12 text-center transform -rotate-[10deg] shrink-0 opacity-80">
+              <div key={index} className="flex items-center w-fit mx-auto bg-white border-[4px] border-black rounded-3xl h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-5 py-2 relative overflow-visible">
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl font-black text-black w-10 text-center transform -rotate-[10deg] shrink-0 opacity-80">
                     #{index + 1}
                   </div>
                   <div className="flex gap-2.5">
