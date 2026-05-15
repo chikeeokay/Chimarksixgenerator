@@ -55,6 +55,7 @@ import {
   MessageCircle,
   Undo,
   Trash2,
+  Cpu,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { QRCodeSVG } from 'qrcode.react';
@@ -884,17 +885,10 @@ export default function App() {
     toast.loading("準備圖片中...", { id: "capture-toast" });
 
     try {
-      let expectedWidth = 500;
-      if (generatedBets.length >= 13) {
-        expectedWidth = 1450;
-      } else if (generatedBets.length >= 11) {
-        expectedWidth = 1000;
-      }
-
       const options = {
         pixelRatio: 2, // High resolution
         backgroundColor: '#1e1e1e',
-        width: expectedWidth,
+        width: captureArea.offsetWidth,
         height: captureArea.offsetHeight,
         cacheBust: true,
       };
@@ -3312,7 +3306,7 @@ export default function App() {
 
       {/* Hidden container exclusively formatted for Screenshot output */}
       <div className="fixed top-0 left-0 -z-50 pointer-events-none opacity-0 overflow-hidden w-0 h-0">
-        <div id="capture-area" className={`bg-[#1e1e1e] font-sans flex flex-col p-8 items-center ${generatedBets.length >= 13 ? 'w-[1450px]' : generatedBets.length >= 11 ? 'w-[1000px]' : 'w-[500px]'}`}>
+        <div id="capture-area" className={`bg-[#1e1e1e] font-sans flex flex-col p-8 items-center ${generatedBets.length >= 13 ? 'w-[1450px]' : generatedBets.length >= 11 ? 'w-[1000px]' : (isAiGenerated && aiReasoning.length > 0) ? 'w-[650px]' : 'w-[500px]'}`}>
           <h1 className="text-[40px] font-black tracking-widest mb-6 text-[#FFE867] leading-none">
             您的幸運號碼
           </h1>
@@ -3341,6 +3335,21 @@ export default function App() {
               </div>
             ))}
           </div>
+
+          {isAiGenerated && aiReasoning.length > 0 && (
+            <div className="mt-6 bg-[#f0fdf4] border-[4px] border-[#16a34a] rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(22,163,74,1)] w-full text-left">
+              <h3 className="font-black text-xl mb-3 flex items-center gap-2 text-[#16a34a]">
+                <Cpu className="w-6 h-6" /> AI 筆記大數據智能選號 (綜合近期 {aiAnalysisDrawsUsed} 期) - 分析筆記：
+              </h3>
+              <div className="text-sm font-bold text-zinc-700 space-y-2">
+                {aiReasoning.map((reason, idx) => (
+                  <p key={idx} className="leading-relaxed">
+                    <span className="text-[#16a34a] mr-1">•</span> {reason}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-8 bg-[#ffedd5] border-[4px] border-black rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-full text-center">
             <h3 className="font-black text-xl mb-2 flex items-center justify-center gap-2"><Sparkles className="w-6 h-6 text-orange-500" /> 幸運生成設定筆記</h3>
