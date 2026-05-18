@@ -3336,41 +3336,78 @@ export default function App() {
             ))}
           </div>
 
-          {isAiGenerated && aiReasoning.length > 0 && (
-            <div className="mt-6 bg-[#f0fdf4] border-[4px] border-[#16a34a] rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(22,163,74,1)] w-full text-left">
-              <h3 className="font-black text-xl mb-3 flex items-center gap-2 text-[#16a34a]">
-                <Cpu className="w-6 h-6" /> AI 筆記大數據智能選號 (綜合近期 {aiAnalysisDrawsUsed} 期) - 分析筆記：
-              </h3>
-              <div className="text-sm font-bold text-zinc-700 space-y-2">
-                {aiReasoning.map((reason, idx) => (
-                  <p key={idx} className="leading-relaxed">
-                    <span className="text-[#16a34a] mr-1">•</span> {reason}
-                  </p>
-                ))}
+          <div className="mt-8 bg-[#ffedd5] border-[4px] border-black rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-full max-w-2xl text-center">
+            <h3 className="font-black text-xl mb-4 flex items-center justify-center gap-2 min-w-0"><Sparkles className="w-6 h-6 text-orange-500 shrink-0" /> 全部生成設定筆記</h3>
+            
+            {isAiGenerated ? (
+              <div className="w-full text-left bg-[#bbf7d0] border-[3px] border-[#16a34a] rounded-lg p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
+                <div className="font-black text-[#166534] mb-3 flex items-center gap-1.5 text-lg">
+                  <Sparkles className="w-5 h-5 shrink-0" /> 
+                  AI 大數據智能選號 (綜合近期 {aiAnalysisDrawsUsed} 期) - 分析筆記：
+                </div>
+                <ul className="list-disc pl-6 space-y-2 text-base font-bold text-[#166534] marker:text-[#166534]">
+                  {aiReasoning.map((reason, i) => (
+                    <li key={i}>{reason}</li>
+                  ))}
+                </ul>
               </div>
-            </div>
-          )}
-
-          <div className="mt-8 bg-[#ffedd5] border-[4px] border-black rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-full text-center">
-            <h3 className="font-black text-xl mb-2 flex items-center justify-center gap-2"><Sparkles className="w-6 h-6 text-orange-500" /> 幸運生成設定筆記</h3>
-            <div className="text-base font-bold text-zinc-800 flex flex-wrap gap-2.5 justify-center mt-2">
-              {preferredOddCount !== null && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">單雙 ({preferredOddCount}單{preferredEvenCount}雙)</span>}
-              {oddEven === 'odd' && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">單雙 (6單)</span>}
-              {oddEven === 'even' && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">單雙 (6雙)</span>}
-              {colors.length === 1 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">波色 (全{colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'})</span>}
-              {colors.length === 2 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">波色 ({colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'} {6 - (colorRatioOption || 3)} : {colorRatioOption || 3} {colors[1] === 'red' ? '紅' : colors[1] === 'blue' ? '藍' : '綠'})</span>}
-              {use3Combos && <span className="bg-[#FFE867] border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">大數據 3合策略</span>}
-              {use2Combos && <span className="bg-[#FFE867] border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">大數據 2合策略</span>}
-              {enableRecent && recentMode === "include" && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">只買近 {recentCount} 期</span>}
-              {enableRecent && recentMode === "exclude" && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">排除近 {recentCount} 期</span>}
-              {enableExcludeUnseen && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">排除近 {excludeUnseenCount} 期未出</span>}
-              {excludedNumbers.length > 0 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">排除號碼: {excludedNumbers.join(', ')}</span>}
-              {luckyNumbers.length > 0 && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">必含號碼: {luckyNumbers.join(', ')}</span>}
-              {enableComplexRecent && <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">複雜近期篩選區間</span>}
-              {oddEven === 'all' && colors.length === 3 && !use2Combos && !use3Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && (
-                 <span className="bg-white border-2 border-black px-3 py-1 rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">完全隨機生成</span>
-              )}
-            </div>
+            ) : (
+              <div className="text-left bg-white border-[3px] border-black rounded-lg p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <div className="font-black text-black mb-3 flex items-center gap-1.5 text-lg">
+                  <Settings2 className="w-5 h-5 shrink-0" /> 
+                  自定生成設定筆記：
+                </div>
+                <ul className="list-disc pl-6 space-y-2 text-base font-bold text-zinc-700">
+                  <li>
+                    號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
+                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent ? ' (純隨機生成，無其他過濾)' : ''}
+                  </li>
+                  {(preferredOddCount !== null || oddEven !== 'all') && (
+                    <li>
+                      單雙配置: {oddEven === 'all' ? '無限制' : oddEven === 'odd' ? '全單' : '全雙'}{preferredOddCount !== null ? ` (特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙)` : ''}
+                    </li>
+                  )}
+                  {colors.length < 3 && (
+                    <li>
+                      波色配置: {colors.length === 1 ? `全${colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'}波` : `特定波色比例 (${colors[0] === 'red' ? '紅' : colors[0] === 'blue' ? '藍' : '綠'} ${6 - (colorRatioOption || 3)} : ${colorRatioOption || 3} ${colors[1] === 'red' ? '紅' : colors[1] === 'blue' ? '藍' : '綠'})`}
+                    </li>
+                  )}
+                  {(use2Combos || use3Combos) && (
+                    <li>
+                      大數據策略: {use2Combos ? '2合策略 ' : ''}{use3Combos ? '3合策略' : ''}
+                    </li>
+                  )}
+                  {enableRecent && (
+                    <li>
+                      近期期數過濾: {recentMode === 'include' ? `只買近 ${recentCount} 期內出現過的號碼` : `排除近 ${recentCount} 期內出現過的號碼`}
+                    </li>
+                  )}
+                  {enableExcludeUnseen && (
+                    <li>
+                      近期期數過濾: 包含近期出現過，但排除近 {excludeUnseenCount} 期未出現的號碼 {excludeUnseenIncludeSpecial ? '(包含特碼)' : '(不含特碼)'}
+                    </li>
+                  )}
+                  {enableComplexRecent && (
+                    <li>
+                      複雜近期篩選區間: 
+                      <span className="ml-2 font-mono text-xs">
+                        [
+                        {complexIncludeRanges.map(r => `出 ${r.start}-${r.end}`).join(', ')}
+                        {complexIncludeRanges.length > 0 && complexExcludeRanges.length > 0 ? ' | ' : ''}
+                        {complexExcludeRanges.map(r => `沒出 ${r.start}-${r.end}`).join(', ')}
+                        ]
+                      </span>
+                    </li>
+                  )}
+                  {excludedNumbers.length > 0 && (
+                    <li>排除號碼: {excludedNumbers.join(', ')}</li>
+                  )}
+                  {luckyNumbers.length > 0 && (
+                    <li>必含號碼: {luckyNumbers.join(', ')}</li>
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div className="mt-8 mb-4 p-4 bg-white rounded-2xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center">
