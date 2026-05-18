@@ -56,6 +56,7 @@ import {
   Undo,
   Trash2,
   Cpu,
+  Smartphone
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { QRCodeSVG } from 'qrcode.react';
@@ -2539,7 +2540,7 @@ export default function App() {
                             <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
                             <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
                               <span>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</span>
-                              <span className="text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-lg border-2 border-[#FF4D4D]/20">註：目前暫不提供手機版自動點擊，只提供電腦版自動點擊教學。</span>
+                              <span className="text-[#3b82f6] bg-[#3b82f6]/10 p-2 rounded-lg border-2 border-[#3b82f6]/20">此教學專為電腦版瀏覽器設計。如需手機版，請關閉此視窗並點擊「自動點擊 HKJC (手機版)」按鈕。</span>
                             </DialogDescription>
                           </DialogHeader>
                           
@@ -2582,6 +2583,89 @@ export default function App() {
                                 ⚠️ 注意：書籤的號碼是固定的！每次重新生成號碼後，您必須刪除舊書籤，並「重新拖曳」一次新的按鈕到書籤列。
                               </p>
                             </div>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    <Dialog>
+                      <DialogTrigger render={
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#fca5a5] text-black"
+                        />
+                      }>
+                        <Smartphone className="w-3.5 h-3.5 mr-1" />
+                        自動點擊 HKJC (手機版)
+                      </DialogTrigger>
+                      <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                          <DialogHeader>
+                            <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 手機版自動點擊教學</DialogTitle>
+                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                              <span>請依據以下步驟，在手機瀏覽器 (Safari 或 Chrome) 設定自動點擊「書籤腳本」。<br/>設定完成後便可於 HKJC 投注頁面執行。</span>
+                            </DialogDescription>
+                          </DialogHeader>
+                          
+                          <div className="w-full mt-4 space-y-5">
+                            <div className="space-y-3">
+                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 準備書籤內容 (一鍵複製)</h4>
+                              <div className="flex flex-col gap-3">
+                                <Button 
+                                  variant="outline"
+                                  className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-2.5 text-sm sm:text-base px-2"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText("自動按球");
+                                    toast.success("名稱「自動按球」已複製！");
+                                  }}
+                                >
+                                  <Copy className="w-4 h-4 mr-2" />
+                                  複製「自動按球」作為書籤名稱
+                                </Button>
+                                <Button 
+                                  className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#4ade80] text-black hover:bg-[#22c55e] h-auto py-2.5 text-sm sm:text-base px-2"
+                                  onClick={() => {
+                                    const scriptContent = decodeURIComponent(getBookmarkletCode(false).replace('javascript:', ''));
+                                    navigator.clipboard.writeText("javascript:" + scriptContent);
+                                    toast.success("腳本代碼已複製！");
+                                  }}
+                                >
+                                  <Copy className="w-4 h-4 mr-2" />
+                                  複製腳本代碼
+                                </Button>
+                              </div>
+                              <p className="text-[11px] sm:text-xs font-bold text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-md border-2 border-[#FF4D4D]/20 mt-2">
+                                ⚠️ 每次生成新號碼後，請重新複製腳本代碼並更新書籤網址！
+                              </p>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 新增並修改書籤</h4>
+                              <ol className="list-decimal list-inside space-y-2 text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
+                                <li>點擊瀏覽器的 分享 或 選單，選擇 加入書籤 (先儲存當前網頁)。</li>
+                                <li>進入 書籤列表，點擊剛新增書籤的 編輯。</li>
+                                <li>將名稱改為貼上 <kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black">自動按球</kbd>。</li>
+                                <li>將網址(URL) 全部清空，並 貼上腳本代碼。<br/><span className="text-xs text-red-500 block mt-1">(請檢查開頭是否包含 javascript:)</span></li>
+                                <li>點擊 儲存。</li>
+                              </ol>
+                            </div>
+
+                            <div className="space-y-2">
+                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 在 HKJC 網頁使用</h4>
+                              <div className="text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200 space-y-3">
+                                <p>1. 前往 <a href="https://bet.hkjc.com/ch/marksix/Single" target="_blank" rel="noreferrer" className="text-blue-600 underline">HKJC 六合彩投注網頁</a>。</p>
+                                <div className="border-l-4 border-[#3b82f6] pl-2 py-1 mb-2 mt-2">
+                                  <span className="text-black font-semibold">Safari 用戶：</span><br/>
+                                  點擊下方 <kbd className="bg-white px-1.5 py-0.5 rounded border border-black text-black text-xs">📖 書籤</kbd> 圖示，直接點擊 <kbd className="bg-[#FFE867] px-1 py-0.5 rounded border border-black text-black text-xs">自動按球</kbd>。
+                                </div>
+                                <div className="border-l-4 border-[#10b981] pl-2 py-1 mb-2">
+                                  <span className="text-black font-semibold">Chrome / Android 用戶：</span><br/>
+                                  點擊頂部 網址列，搜尋 <kbd className="bg-[#FFE867] px-1 py-0.5 rounded border border-black text-black text-xs">自動按球</kbd>，點選下方出現的有 ⭐ 星星圖示的搜尋建議。
+                                </div>
+                                <p className="text-[#FF4D4D] mt-3 font-semibold text-base">▶ 程式即會幫您自動點擊號碼球和「加入注項」！</p>
+                              </div>
+                            </div>
+
                           </div>
                         </div>
                       </DialogContent>
