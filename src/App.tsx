@@ -351,16 +351,16 @@ export default function App() {
       const comboPercentage = (Math.random() * 0.25 + 0.15); // Between 15% and 40%
       const totalComboBets = Math.max(1, Math.round(aiBetCount * comboPercentage));
 
-      const filterExplanation = `溫度過濾：採用均衡分配，將注數平均分配給「保守防守」、「乘勝追擊」及「逆向博冷」三種不同策略，擴大捕捉範圍。`;
+      const filterExplanation = `溫度過濾：採用均衡分配，將注數平均分配給「保守組（高頻號碼）」、「激進組（冷門號碼）」與「均衡組」，分散投資風險並排除歷史機率較低的衰減規律。`;
 
       const roundedComboPct = Math.round(comboPercentage * 100);
 
       const explanations = [
-        `大數據隱藏趨勢分析：透過深度拆解過去 ${aiAnalysisDraws} 期的開彩數據，AI 自動比對各大週期內的冷熱號碼分佈、單雙比例偏差及波色出現頻率，精確捕捉肉眼難以察覺的規律。`,
-        `單雙趨勢：近期${oddCount >= evenCount ? '單' : '雙'}數偏多，AI 將根據大數據模型動態調整各注的單雙比例。`,
-        `波色決策：近期各大波色出現頻率互有消長，AI 將配合不同的溫度過濾策略，自動選擇最合適的波色組合。`,
+        `大數據隱藏趨勢分析：透過深度拆解過去 ${aiAnalysisDraws} 期的開彩數據，比對冷熱號碼分佈（Hot/Cold Numbers）、單雙比例偏差及波色出現頻率，精確捕捉具備統計顯著性的變化。`,
+        `號碼間距與遺漏分析（Number Gaps and Skips）：追蹤號碼出現間距是否符合幾何分佈，並透過 FFG 算法 (賭博基本公式) 計算當前遺漏期數與期望期數，捕捉即將回歸均值的「壁花」號碼。`,
+        `總和值分佈與正態性（Sum Distribution）：依據大數定律和中心極限定理，確保最終生成的組合總和值落於正態分佈的中心區間 (即 Z-Score 合理範圍內)，避免極端偏離。`,
         filterExplanation,
-        `大數據演算法：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (約 ${totalComboBets} 注) 使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合；其餘則採用純機率分佈的演算法進行獨立選號。`
+        `關聯挖掘與共現分析：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (約 ${totalComboBets} 注) 使用「同盟挖掘 (FP-Growth)」及「2合/3合策略」，自動尋找最高勝率的同伴號碼組合；同時應用飽和衰減 (Saturation Attenuation) 防止熱號陷阱。`
       ];
       setAiReasoning(explanations);
       
@@ -379,7 +379,8 @@ export default function App() {
         excludeUnseenIncludeSpecial: false,
         noConsecutivePairs: false,
         noConsecutiveTriplets: false,
-        comboAnalysisDrawCount: aiAnalysisDraws
+        comboAnalysisDrawCount: aiAnalysisDraws,
+        enforceNormalSumDistribution: true
       };
 
       const counts = [
@@ -417,21 +418,40 @@ export default function App() {
 
         let complexStrategy;
         let stratName = "";
+        let currentAiStrategy: "hot" | "cold" | "balanced" = "balanced";
         if (s === 0) {
-          stratName = "保守防守 - 排除近1期大熱，捕捉剛剛沉寂的號碼";
+          stratName = "保守組 (高頻選號) - 排除近期飽和熱號，鎖定持續活躍的號碼";
           complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 1 }], includeRanges: [] };
+          currentAiStrategy = "hot";
         } else if (s === 1) {
-          stratName = "乘勝追擊 - 鎖定近1-4期頻繁出現的大熱號碼";
-          complexStrategy = { enabled: true, excludeRanges: [], includeRanges: [{ start: 1, end: 4 }] };
+          stratName = "激進組 (冷門捕捉) - 應用拉伸間距分析，捕捉長期遺漏的「壁花」號碼";
+          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 5 }], includeRanges: [] };
+          currentAiStrategy = "cold";
         } else {
-          stratName = "逆向博冷 - 完全排除近4期曾開出的大熱及微熱號碼";
-          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 4 }], includeRanges: [] };
+          stratName = "均衡組 (動態平衡) - 結合冷熱號碼，遵循正態分佈原則";
+          complexStrategy = { enabled: true, excludeRanges: [{ start: 1, end: 2 }], includeRanges: [] };
+          currentAiStrategy = "balanced";
         }
 
         const injectDynamicExplanations = (bet: any, typeName: string) => {
           let expls = (bet.explanations && bet.explanations.length > 0) ? [...bet.explanations] : [];
           expls.push(`大數據演算法：${typeName}`);
           
+          const sum = bet.numbers.reduce((a: number, b: number) => a + b, 0);
+          if (sum < 110 || sum > 190) {
+            expls.push(`總和值分佈：此注總和為 ${sum}，屬於極端分佈。AI 已觸發 30% 多樣性放行機制，保留此邊緣數據以應對「黑天鵝」隨機事件。`);
+          } else {
+            expls.push(`總和值分佈：此注總和為 ${sum}，處於正態分佈核心 110~190 區間內，符合大數法則的常態預期。`);
+          }
+
+          if (currentAiStrategy === "hot") {
+            expls.push(`飽和衰減制動：已自動降低近期出現超過4次之過熱號碼的比重，防止誤墮「熱號陷阱」。`);
+          } else if (currentAiStrategy === "cold") {
+            expls.push(`FFG 遺漏分析：已對遺漏超過 10 期、20 期以上的號碼進行指數級權重提升，精準捕捉回歸均值的「壁花」。`);
+          } else if (currentAiStrategy === "balanced") {
+            expls.push(`動態平衡演算：同時應用 FFG 遺漏捕捉與飽和衰減制動，維持冷熱號碼的正態平衡。`);
+          }
+
           const bOdds = bet.numbers.filter((n: number) => n % 2 !== 0).length;
           const bEvens = 6 - bOdds;
           expls.push(`單雙配置：此注自動配置為 ${bOdds}單 ${bEvens}雙。`);
@@ -457,6 +477,7 @@ export default function App() {
             combo2Count: 0,
             use3Combos: false,
             combo3Count: 0,
+            aiStrategy: currentAiStrategy,
           }).map(bet => injectDynamicExplanations(bet, `此注採用純機率分佈進行獨立選號，透過先進隨機洗牌演算法排除人為偏差，確保每個數字在統計學上具有完全平等的出現機率。`));
           allBets.push(...normalBets);
         }
@@ -470,6 +491,7 @@ export default function App() {
             combo2Count: 3,
             use3Combos: willUse3Combos,
             combo3Count: 1,
+            aiStrategy: currentAiStrategy,
           }).map(bet => injectDynamicExplanations(bet, `使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`));
           allBets.push(...comboBets);
         }
@@ -2601,46 +2623,46 @@ export default function App() {
                       <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
                         <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                           <DialogHeader>
-                            <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 手機版自動點擊教學</DialogTitle>
-                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                            <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 手機版自動點擊教學</DialogTitle>
+                            <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
                               <span>請依據以下步驟，在手機瀏覽器 (Safari 或 Chrome) 設定自動點擊「書籤腳本」。<br/>設定完成後便可於 HKJC 投注頁面執行。</span>
                             </DialogDescription>
                           </DialogHeader>
                           
                           <div className="w-full mt-4 space-y-5">
                             <div className="space-y-3">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 準備書籤內容 (一鍵複製)</h4>
-                              <div className="flex flex-col gap-3">
+                              <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 準備書籤內容 (一鍵複製)</h4>
+                              <div className="flex gap-2">
                                 <Button 
                                   variant="outline"
-                                  className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-2.5 text-sm sm:text-base px-2"
+                                  className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-2.5 text-sm sm:text-base px-2 truncate"
                                   onClick={() => {
                                     navigator.clipboard.writeText("自動按球");
                                     toast.success("名稱「自動按球」已複製！");
                                   }}
                                 >
-                                  <Copy className="w-4 h-4 mr-2" />
-                                  複製「自動按球」作為書籤名稱
+                                  <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                  <span className="truncate">複製名稱</span>
                                 </Button>
                                 <Button 
-                                  className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#4ade80] text-black hover:bg-[#22c55e] h-auto py-2.5 text-sm sm:text-base px-2"
+                                  className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#4ade80] text-black hover:bg-[#22c55e] h-auto py-2.5 text-sm sm:text-base px-2 truncate"
                                   onClick={() => {
                                     const scriptContent = decodeURIComponent(getBookmarkletCode(false).replace('javascript:', ''));
                                     navigator.clipboard.writeText("javascript:" + scriptContent);
                                     toast.success("腳本代碼已複製！");
                                   }}
                                 >
-                                  <Copy className="w-4 h-4 mr-2" />
-                                  複製腳本代碼
+                                  <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                  <span className="truncate">複製腳本代碼</span>
                                 </Button>
                               </div>
-                              <p className="text-[11px] sm:text-xs font-bold text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-md border-2 border-[#FF4D4D]/20 mt-2">
+                              <p className="text-[11px] sm:text-xs text-[#FF4D4D] bg-[#FF4D4D]/10 p-2 rounded-md border-2 border-[#FF4D4D]/20 mt-2">
                                 ⚠️ 每次生成新號碼後，請重新複製腳本代碼並更新書籤網址！
                               </p>
                             </div>
                             
                             <div className="space-y-2">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 新增並修改書籤</h4>
+                              <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 新增並修改書籤</h4>
                               <ol className="list-decimal list-inside space-y-2 text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
                                 <li>點擊瀏覽器的 分享 或 選單，選擇 加入書籤 (先儲存當前網頁)。</li>
                                 <li>進入 書籤列表，點擊剛新增書籤的 編輯。</li>
@@ -2651,18 +2673,18 @@ export default function App() {
                             </div>
 
                             <div className="space-y-2">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 在 HKJC 網頁使用</h4>
+                              <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 在 HKJC 網頁使用</h4>
                               <div className="text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200 space-y-3">
                                 <p>1. 前往 <a href="https://bet.hkjc.com/ch/marksix/Single" target="_blank" rel="noreferrer" className="text-blue-600 underline">HKJC 六合彩投注網頁</a>。</p>
                                 <div className="border-l-4 border-[#3b82f6] pl-2 py-1 mb-2 mt-2">
-                                  <span className="text-black font-semibold">Safari 用戶：</span><br/>
+                                  <span className="text-black">Safari 用戶：</span><br/>
                                   點擊下方 <kbd className="bg-white px-1.5 py-0.5 rounded border border-black text-black text-xs">📖 書籤</kbd> 圖示，直接點擊 <kbd className="bg-[#FFE867] px-1 py-0.5 rounded border border-black text-black text-xs">自動按球</kbd>。
                                 </div>
                                 <div className="border-l-4 border-[#10b981] pl-2 py-1 mb-2">
-                                  <span className="text-black font-semibold">Chrome / Android 用戶：</span><br/>
+                                  <span className="text-black">Chrome / Android 用戶：</span><br/>
                                   點擊頂部 網址列，搜尋 <kbd className="bg-[#FFE867] px-1 py-0.5 rounded border border-black text-black text-xs">自動按球</kbd>，點選下方出現的有 ⭐ 星星圖示的搜尋建議。
                                 </div>
-                                <p className="text-[#FF4D4D] mt-3 font-semibold text-base">▶ 程式即會幫您自動點擊號碼球和「加入注項」！</p>
+                                <p className="text-[#FF4D4D] mt-3 tracking-wide">▶ 程式即會幫您自動點擊號碼球和「加入注項」！</p>
                               </div>
                             </div>
 

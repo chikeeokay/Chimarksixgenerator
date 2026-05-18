@@ -47,6 +47,8 @@ export interface GenerateOptions {
   use3Combos?: boolean; // Enable 3-combo generation logic based on last N draws
   combo3Count?: number;
   comboAnalysisDrawCount?: number; // How many past draws to analyze for combos (default 100)
+  enforceNormalSumDistribution?: boolean; // Enforce the normal distribution 100~200
+  aiStrategy?: "hot" | "cold" | "balanced";
 }
 
 export interface GeneratedBet {
@@ -182,13 +184,49 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
     drawsForCombos = recentDraws.slice(0, drawsToAnalyzeCount);
   }
 
+  let aiWeightMap: Map<number, number> | undefined = undefined;
+  if (options.aiStrategy && recentDraws.length > 0) {
+    aiWeightMap = new Map<number, number>();
+    const freq20 = new Map<number, number>();
+    const past20 = recentDraws.slice(0, 20).map(d => d.slice(0, 6)); // ignore special
+    past20.flat().forEach(n => freq20.set(n, (freq20.get(n) || 0) + 1));
+    const skipMap = new Map<number, number>();
+    for (let num = 1; num <= 49; num++) {
+      let skip = 0;
+      while (skip < recentDraws.length) {
+        if (recentDraws[skip].slice(0, 6).includes(num)) break;
+        skip++;
+      }
+      skipMap.set(num, skip);
+    }
+    
+    for (const num of pool) {
+      let w = 1.0;
+      const f20 = freq20.get(num) || 0;
+      const skip = skipMap.get(num) || 0;
+      
+      if (options.aiStrategy === "hot") {
+        if (f20 > 4) w *= 0.2; // Saturation Attenuation
+        else if (f20 >= 2 && f20 <= 4) w *= 2.0;
+      } else if (options.aiStrategy === "cold") {
+        if (skip > 10) w *= 1.5;
+        if (skip > 20) w *= 2.5;
+        if (skip > 40) w *= 5.0; // FFG stretching gaps
+      } else if (options.aiStrategy === "balanced") {
+        if (f20 > 4) w *= 0.3; // Attenuate saturated only
+        if (skip > 20) w *= 1.2;
+      }
+      aiWeightMap.set(num, w);
+    }
+  }
+
   const bets: GeneratedBet[] = [];
   const seenBets = new Set<string>();
   let attempts = 0;
-  const maxAttempts = count * 100; // Prevent infinite loop
+  const maxAttempts = count * 200; // Prevent infinite loop
 
   while (bets.length < count && attempts < maxAttempts) {
-    const betResult = generateSingleBet(pool, mustInclude, options, drawsForCombos);
+    const betResult = generateSingleBet(pool, mustInclude, options, drawsForCombos, aiWeightMap);
     const betKey = betResult.numbers.join(",");
     
     // Check preferred odds/evens count
@@ -230,6 +268,16 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       if (hasTriplet) validCounts = false;
     }
 
+    if (options.enforceNormalSumDistribution) {
+      const sum = betResult.numbers.reduce((a, b) => a + b, 0);
+      if (sum < 110 || sum > 190) {
+        // 70% 機率擋下極端值，30% 機率放行，增加多樣性
+        if (Math.random() < 0.70) {
+          validCounts = false;
+        }
+      }
+    }
+
     if (validCounts && !seenBets.has(betKey)) {
       seenBets.add(betKey);
       bets.push(betResult);
@@ -246,11 +294,26 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
   return bets;
 }
 
+function getWeightedRandomOne(arr: number[], weightMap?: Map<number, number>): number {
+  if (!weightMap) return getRandomOne(arr);
+  let totalWeight = 0;
+  for (const n of arr) {
+    totalWeight += weightMap.get(n) || 1;
+  }
+  let random = Math.random() * totalWeight;
+  for (const n of arr) {
+    random -= (weightMap.get(n) || 1);
+    if (random <= 0) return n;
+  }
+  return arr[arr.length - 1];
+}
+
 function generateSingleBet(
   pool: number[], 
   mustInclude: number[] = [],
   options: GenerateOptions,
-  comboDraws: number[][]
+  comboDraws: number[][],
+  aiWeightMap?: Map<number, number>
 ): GeneratedBet {
   let selected = [...mustInclude];
   let availablePool = pool.filter(n => !mustInclude.includes(n));
@@ -259,7 +322,7 @@ function generateSingleBet(
   // 1. Fill exactly 6 first (ignoring combos for now)
   while (selected.length < 6) {
     if (availablePool.length > 0) {
-       const nextNum = getRandomOne(availablePool);
+       const nextNum = getWeightedRandomOne(availablePool, aiWeightMap);
        selected.push(nextNum);
        availablePool = availablePool.filter(n => n !== nextNum);
     } else {
