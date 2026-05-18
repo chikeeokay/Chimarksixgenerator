@@ -48,6 +48,7 @@ export interface GenerateOptions {
   combo3Count?: number;
   comboAnalysisDrawCount?: number; // How many past draws to analyze for combos (default 100)
   enforceNormalSumDistribution?: boolean; // Enforce the normal distribution 100~200
+  sumDistributionRange?: [number, number]; // Minimum and maximum allowed sums
   aiStrategy?: "hot" | "cold" | "balanced";
 }
 
@@ -268,7 +269,14 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       if (hasTriplet) validCounts = false;
     }
 
-    if (options.enforceNormalSumDistribution) {
+    if (options.sumDistributionRange) {
+      const sum = betResult.numbers.reduce((a, b) => a + b, 0);
+      if (sum < options.sumDistributionRange[0] || sum > options.sumDistributionRange[1]) {
+        validCounts = false;
+      }
+    }
+    
+    if (validCounts && options.enforceNormalSumDistribution) {
       const sum = betResult.numbers.reduce((a, b) => a + b, 0);
       if (sum < 110 || sum > 190) {
         // 70% 機率擋下極端值，30% 機率放行，增加多樣性
@@ -285,10 +293,89 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
     attempts++;
   }
 
+  if (bets.length < count) {
+    // Fallback: constraint solver for extremely strict conditions (like specific sum ranges)
+    let availablePool = pool.filter(n => !mustInclude.includes(n));
+    availablePool.sort(() => Math.random() - 0.5); // Shuffle for random results
+    
+    let iterations = 0;
+    const maxFallbackIterations = 200000;
+    
+    function backtrack(startIndex: number, currentCombo: number[]) {
+      if (bets.length >= count || iterations > maxFallbackIterations) return;
+      iterations++;
+      
+      let currentSum = 0;
+      for (let j = 0; j < currentCombo.length; j++) currentSum += currentCombo[j];
+
+      if (currentCombo.length === 6) {
+        let valid = true;
+        if (options.sumDistributionRange) {
+          if (currentSum < options.sumDistributionRange[0] || currentSum > options.sumDistributionRange[1]) valid = false;
+        } else if (options.enforceNormalSumDistribution) {
+          if (currentSum < 110 || currentSum > 190) {
+            if (Math.random() < 0.70) valid = false;
+          }
+        }
+
+        if (valid) {
+          const oddCount = currentCombo.filter(n => n % 2 !== 0).length;
+          const evenCount = 6 - oddCount;
+          if (options.preferredOddCount !== undefined && options.preferredOddCount !== null && oddCount !== options.preferredOddCount) valid = false;
+          if (options.preferredEvenCount !== undefined && options.preferredEvenCount !== null && evenCount !== options.preferredEvenCount) valid = false;
+        }
+
+        if (valid && colors.length === 2 && options.colorRatioOption) {
+          const color2Count = currentCombo.filter(n => getBallColor(n) === colors[1]).length;
+          if (color2Count !== options.colorRatioOption) valid = false;
+        }
+
+        if (valid && options.noConsecutivePairs) {
+          const sorted = [...currentCombo].sort((a, b) => a - b);
+          for (let i = 0; i < 5; i++) if (sorted[i] + 1 === sorted[i + 1]) valid = false;
+        } else if (valid && options.noConsecutiveTriplets) {
+          const sorted = [...currentCombo].sort((a, b) => a - b);
+          for (let i = 0; i < 4; i++) if (sorted[i] + 1 === sorted[i + 1] && sorted[i + 1] + 1 === sorted[i + 2]) valid = false;
+        }
+
+        if (valid) {
+          const finalSorted = [...currentCombo].sort((a,b)=>a-b);
+          const betKey = finalSorted.join(",");
+          if (!seenBets.has(betKey)) {
+            seenBets.add(betKey);
+            bets.push({
+              numbers: finalSorted,
+              explanations: ["啟動邊緣運算機制 (Constraint Solver) 生成，成功找到符合極端條件的號碼組合。"]
+            });
+          }
+        }
+        return;
+      }
+
+      const remainingCount = 6 - currentCombo.length;
+      let maxPossible = currentSum + (49 * remainingCount);
+      let minPossible = currentSum + (1 * remainingCount);
+      
+      if (options.sumDistributionRange) {
+        if (maxPossible < options.sumDistributionRange[0]) return;
+        if (minPossible > options.sumDistributionRange[1]) return;
+      }
+
+      for (let i = startIndex; i < availablePool.length; i++) {
+        if (bets.length >= count || iterations > maxFallbackIterations) return;
+        currentCombo.push(availablePool[i]);
+        backtrack(i + 1, currentCombo);
+        currentCombo.pop();
+      }
+    }
+    
+    backtrack(0, [...mustInclude]);
+  }
+
   if (bets.length === 0) {
-    throw new Error(`無法生成任何不重複的號碼組合。請嘗試：\n1. 擴大號碼範圍\n2. 選擇更多波色\n3. 放寬單雙數限制\n4. 減少排除的近期期數\n5. 放寬連號限制`);
+    throw new Error(`無法生成任何不重複的號碼組合。請嘗試：\n1. 擴大號碼範圍\n2. 選擇更多波色\n3. 放寬單雙數限制\n4. 調整總和值範圍\n5. 放寬連號限制`);
   } else if (bets.length < count) {
-    throw new PartialGenerationError(`篩選條件過於嚴格，目前符合條件的號碼組合不足，只能生成 ${bets.length} 注不重複號碼。請嘗試：\n1. 減少生成注數\n2. 放寬篩選限制（例如連號限制）`, bets);
+    throw new PartialGenerationError(`篩選條件過於嚴格，目前符合條件的號碼組合不足，只能生成 ${bets.length} 注不重複號碼。請嘗試：\n1. 減少生成注數\n2. 放寬篩選限制（例如總和值範圍）`, bets);
   }
 
   return bets;

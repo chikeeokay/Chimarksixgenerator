@@ -90,6 +90,7 @@ const parseRanges = (input: string): {start: number, end: number}[] => {
 
 export default function App() {
   const [betCount, setBetCount] = useState<number>(6);
+  const [sumRange, setSumRange] = useState<[number, number]>([21, 279]);
   const [preferredOddCount, setPreferredOddCount] = useState<number | null>(null);
   const [preferredEvenCount, setPreferredEvenCount] = useState<number | null>(null);
   const [ranges, setRanges] = useState<{start: number, end: number}[]>([{start: 1, end: 49}]);
@@ -111,7 +112,8 @@ export default function App() {
   const [enableExcludeUnseen, setEnableExcludeUnseen] = useState(false);
   const [excludeUnseenCount, setExcludeUnseenCount] = useState<number>(20);
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
-  const [consecutiveMode, setConsecutiveMode] = useState<"allow" | "no_pairs" | "no_triplets">("allow");
+  const [noConsecutivePairs, setNoConsecutivePairs] = useState(false);
+  const [noConsecutiveTriplets, setNoConsecutiveTriplets] = useState(false);
   const [use2Combos, setUse2Combos] = useState(false);
   const [combo2Count, setCombo2Count] = useState<number>(1);
   const [use3Combos, setUse3Combos] = useState(false);
@@ -218,6 +220,7 @@ export default function App() {
 
   const resetSettings = () => {
     setBetCount(6);
+    setSumRange([21, 279]);
     setPreferredOddCount(null);
     setPreferredEvenCount(null);
     setRanges([{start: 1, end: 49}]);
@@ -238,7 +241,8 @@ export default function App() {
     setEnableExcludeUnseen(false);
     setExcludeUnseenCount(20);
     setExcludeUnseenIncludeSpecial(false);
-    setConsecutiveMode("allow");
+    setNoConsecutivePairs(false);
+    setNoConsecutiveTriplets(false);
     setUse2Combos(false);
     setCombo2Count(1);
     setUse3Combos(false);
@@ -288,8 +292,9 @@ export default function App() {
         use3Combos,
         combo3Count,
         comboAnalysisDrawCount: 100,
-        noConsecutivePairs: consecutiveMode === "no_pairs",
-        noConsecutiveTriplets: consecutiveMode === "no_triplets"
+        noConsecutivePairs: noConsecutivePairs,
+        noConsecutiveTriplets: noConsecutiveTriplets,
+        sumDistributionRange: sumRange
       });
 
       setTimeout(() => {
@@ -380,7 +385,8 @@ export default function App() {
         noConsecutivePairs: false,
         noConsecutiveTriplets: false,
         comboAnalysisDrawCount: aiAnalysisDraws,
-        enforceNormalSumDistribution: true
+        enforceNormalSumDistribution: true,
+        sumDistributionRange: sumRange
       };
 
       const counts = [
@@ -1437,6 +1443,27 @@ export default function App() {
                   ))}
                 </div>
 
+                {/* Sum Range */}
+                <div className="space-y-0.5">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-base font-bold">總和值分佈 (110~190為常態)</Label>
+                    <span className="font-black text-[15px] sm:text-lg text-black bg-[#FFD700] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                      {sumRange[0]} - {sumRange[1]}
+                    </span>
+                  </div>
+                  <Slider
+                    value={sumRange}
+                    min={21}
+                    max={279}
+                    step={1}
+                    onValueChange={(val) => {
+                      const valArray = Array.isArray(val) ? val : [val, val];
+                      setSumRange([valArray[0], valArray[1] || valArray[0]]);
+                    }}
+                    className="py-1 sm:py-2 cursor-pointer"
+                  />
+                </div>
+
                 {/* Odd/Even */}
                 <div className="space-y-0.5">
                   <Label className="text-base font-bold">單雙組合</Label>
@@ -1575,20 +1602,14 @@ export default function App() {
                   <Label className="text-base font-bold">連號限制</Label>
                   <div className="flex gap-2 flex-wrap">
                     <button
-                      onClick={() => setConsecutiveMode("allow")}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${consecutiveMode === "allow" ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
-                    >
-                      允許連號
-                    </button>
-                    <button
-                      onClick={() => setConsecutiveMode("no_pairs")}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${consecutiveMode === "no_pairs" ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                      onClick={() => setNoConsecutivePairs(!noConsecutivePairs)}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${noConsecutivePairs ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
                     >
                       不要連2號
                     </button>
                     <button
-                      onClick={() => setConsecutiveMode("no_triplets")}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${consecutiveMode === "no_triplets" ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                      onClick={() => setNoConsecutiveTriplets(!noConsecutiveTriplets)}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${noConsecutiveTriplets ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
                     >
                       不要連3號
                     </button>
@@ -2778,10 +2799,10 @@ export default function App() {
                         <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-zinc-700">
                           <li>
                             號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
-                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && consecutiveMode === "allow" ? ' (純隨機生成，無其他過濾)' : ''}
+                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && !noConsecutivePairs && !noConsecutiveTriplets ? ' (純隨機生成，無其他過濾)' : ''}
                           </li>
-                          {consecutiveMode !== "allow" && (
-                            <li>連號限制: {consecutiveMode === "no_pairs" ? "不要連2號" : "不要連3號"}</li>
+                          {(noConsecutivePairs || noConsecutiveTriplets) && (
+                            <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                           )}
                           {(preferredOddCount !== null || oddEven !== 'all') && (
                             <li>
@@ -3501,10 +3522,10 @@ export default function App() {
                 <ul className="list-disc pl-6 space-y-2 text-base font-bold text-zinc-700">
                   <li>
                     號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
-                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && consecutiveMode === "allow" ? ' (純隨機生成，無其他過濾)' : ''}
+                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && !noConsecutivePairs && !noConsecutiveTriplets ? ' (純隨機生成，無其他過濾)' : ''}
                   </li>
-                  {consecutiveMode !== "allow" && (
-                    <li>連號限制: {consecutiveMode === "no_pairs" ? "不要連2號" : "不要連3號"}</li>
+                  {(noConsecutivePairs || noConsecutiveTriplets) && (
+                    <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                   )}
                   {(preferredOddCount !== null || oddEven !== 'all') && (
                     <li>
