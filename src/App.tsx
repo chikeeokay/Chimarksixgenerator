@@ -110,6 +110,7 @@ export default function App() {
   const [enableExcludeUnseen, setEnableExcludeUnseen] = useState(false);
   const [excludeUnseenCount, setExcludeUnseenCount] = useState<number>(20);
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
+  const [consecutiveMode, setConsecutiveMode] = useState<"allow" | "no_pairs" | "no_triplets">("allow");
   const [use2Combos, setUse2Combos] = useState(false);
   const [combo2Count, setCombo2Count] = useState<number>(1);
   const [use3Combos, setUse3Combos] = useState(false);
@@ -236,6 +237,7 @@ export default function App() {
     setEnableExcludeUnseen(false);
     setExcludeUnseenCount(20);
     setExcludeUnseenIncludeSpecial(false);
+    setConsecutiveMode("allow");
     setUse2Combos(false);
     setCombo2Count(1);
     setUse3Combos(false);
@@ -284,7 +286,9 @@ export default function App() {
         combo2Count,
         use3Combos,
         combo3Count,
-        comboAnalysisDrawCount: 100
+        comboAnalysisDrawCount: 100,
+        noConsecutivePairs: consecutiveMode === "no_pairs",
+        noConsecutiveTriplets: consecutiveMode === "no_triplets"
       });
 
       setTimeout(() => {
@@ -336,6 +340,7 @@ export default function App() {
       setExcludedLegs([]);
       setEnableExcludeUnseen(false);
       setExcludeUnseenIncludeSpecial(false);
+      setConsecutiveMode("allow");
       setUse2Combos(true);
       setCombo2Count(3);
       const willUse3Combos = Math.random() > 0.5;
@@ -371,6 +376,8 @@ export default function App() {
         excludedNumbers: [],
         excludeUnseenInRecent: undefined,
         excludeUnseenIncludeSpecial: false,
+        noConsecutivePairs: false,
+        noConsecutiveTriplets: false,
         comboAnalysisDrawCount: aiAnalysisDraws
       };
 
@@ -1540,6 +1547,31 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Consecutive Numbers */}
+                <div className="space-y-0.5">
+                  <Label className="text-base font-bold">連號限制</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => setConsecutiveMode("allow")}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${consecutiveMode === "allow" ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      允許連號
+                    </button>
+                    <button
+                      onClick={() => setConsecutiveMode("no_pairs")}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${consecutiveMode === "no_pairs" ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      不要連2號
+                    </button>
+                    <button
+                      onClick={() => setConsecutiveMode("no_triplets")}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${consecutiveMode === "no_triplets" ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      不要連3號
+                    </button>
+                  </div>
+                </div>
+
                 {/* Lucky Numbers Input */}
                 <div className="space-y-1.5 pt-1 border-t-[3px] border-black border-dashed">
                   <div className="flex flex-col gap-2">
@@ -2640,8 +2672,11 @@ export default function App() {
                         <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-zinc-700">
                           <li>
                             號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
-                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent ? ' (純隨機生成，無其他過濾)' : ''}
+                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && consecutiveMode === "allow" ? ' (純隨機生成，無其他過濾)' : ''}
                           </li>
+                          {consecutiveMode !== "allow" && (
+                            <li>連號限制: {consecutiveMode === "no_pairs" ? "不要連2號" : "不要連3號"}</li>
+                          )}
                           {(preferredOddCount !== null || oddEven !== 'all') && (
                             <li>
                               單雙配置: {oddEven === 'all' ? '無限制' : oddEven === 'odd' ? '全單' : '全雙'}{preferredOddCount !== null ? ` (特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙)` : ''}
@@ -3360,8 +3395,11 @@ export default function App() {
                 <ul className="list-disc pl-6 space-y-2 text-base font-bold text-zinc-700">
                   <li>
                     號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
-                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent ? ' (純隨機生成，無其他過濾)' : ''}
+                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && consecutiveMode === "allow" ? ' (純隨機生成，無其他過濾)' : ''}
                   </li>
+                  {consecutiveMode !== "allow" && (
+                    <li>連號限制: {consecutiveMode === "no_pairs" ? "不要連2號" : "不要連3號"}</li>
+                  )}
                   {(preferredOddCount !== null || oddEven !== 'all') && (
                     <li>
                       單雙配置: {oddEven === 'all' ? '無限制' : oddEven === 'odd' ? '全單' : '全雙'}{preferredOddCount !== null ? ` (特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙)` : ''}

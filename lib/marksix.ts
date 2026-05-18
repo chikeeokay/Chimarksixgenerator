@@ -40,6 +40,8 @@ export interface GenerateOptions {
   };
   excludeUnseenInRecent?: number; // Exclude numbers not seen in the last N draws
   excludeUnseenIncludeSpecial?: boolean; // Whether to include special numbers when determining seen numbers
+  noConsecutivePairs?: boolean; // Do not allow 2 consecutive numbers (e.g. 22, 23)
+  noConsecutiveTriplets?: boolean; // Do not allow 3 consecutive numbers (e.g. 22, 23, 24)
   use2Combos?: boolean; // Enable 2-combo generation logic based on last N draws
   combo2Count?: number;
   use3Combos?: boolean; // Enable 3-combo generation logic based on last N draws
@@ -208,6 +210,26 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       }
     }
 
+    if (options.noConsecutivePairs) {
+      let hasPair = false;
+      for (let i = 0; i < betResult.numbers.length - 1; i++) {
+        if (betResult.numbers[i] + 1 === betResult.numbers[i+1]) {
+          hasPair = true;
+          break;
+        }
+      }
+      if (hasPair) validCounts = false;
+    } else if (options.noConsecutiveTriplets) {
+      let hasTriplet = false;
+      for (let i = 0; i < betResult.numbers.length - 2; i++) {
+        if (betResult.numbers[i] + 1 === betResult.numbers[i+1] && betResult.numbers[i+1] + 1 === betResult.numbers[i+2]) {
+          hasTriplet = true;
+          break;
+        }
+      }
+      if (hasTriplet) validCounts = false;
+    }
+
     if (validCounts && !seenBets.has(betKey)) {
       seenBets.add(betKey);
       bets.push(betResult);
@@ -216,9 +238,9 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
   }
 
   if (bets.length === 0) {
-    throw new Error(`無法生成任何不重複的號碼組合。請嘗試：\n1. 擴大號碼範圍\n2. 選擇更多波色\n3. 放寬單雙數限制\n4. 減少排除的近期期數`);
+    throw new Error(`無法生成任何不重複的號碼組合。請嘗試：\n1. 擴大號碼範圍\n2. 選擇更多波色\n3. 放寬單雙數限制\n4. 減少排除的近期期數\n5. 放寬連號限制`);
   } else if (bets.length < count) {
-    throw new PartialGenerationError(`篩選條件過於嚴格，目前符合條件的號碼組合不足，只能生成 ${bets.length} 注不重複號碼。請嘗試：\n1. 減少生成注數\n2. 放寬篩選限制`, bets);
+    throw new PartialGenerationError(`篩選條件過於嚴格，目前符合條件的號碼組合不足，只能生成 ${bets.length} 注不重複號碼。請嘗試：\n1. 減少生成注數\n2. 放寬篩選限制（例如連號限制）`, bets);
   }
 
   return bets;
