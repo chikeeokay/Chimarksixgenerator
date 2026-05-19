@@ -346,7 +346,8 @@ export default function App() {
       setExcludedLegs([]);
       setEnableExcludeUnseen(false);
       setExcludeUnseenIncludeSpecial(false);
-      setConsecutiveMode("allow");
+      setNoConsecutivePairs(false);
+      setNoConsecutiveTriplets(false);
       setUse2Combos(true);
       setCombo2Count(3);
       const willUse3Combos = Math.random() > 0.5;
