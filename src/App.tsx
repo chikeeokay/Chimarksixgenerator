@@ -1327,9 +1327,20 @@ export default function App() {
             <Button
               variant="outline"
               className="border-[3px] border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] sm:border-4 sm:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 sm:hover:translate-y-1 sm:hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:py-1.5 sm:px-3 text-xs sm:text-sm bg-black text-[#FFD700] hover:bg-black hover:text-[#FFD700]"
-              onClick={() =>
-                window.open("https://bet.hkjc.com/ch/marksix/home", "_blank")
-              }
+              onClick={() => {
+                const isAndroid = /Android/i.test(navigator.userAgent);
+                const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+                if (isAndroid) {
+                  window.open("intent://bet.hkjc.com/ch/marksix/home#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fbet.hkjc.com%2Fch%2Fmarksix%2Fhome;end", "_top");
+                } else if (isIOS) {
+                  window.open("googlechrome://bet.hkjc.com/ch/marksix/home", "_top");
+                  setTimeout(() => {
+                    window.open("https://bet.hkjc.com/ch/marksix/home", "_blank");
+                  }, 1000);
+                } else {
+                  window.open("https://bet.hkjc.com/ch/marksix/home", "_blank");
+                }
+              }}
             >
               <ExternalLink className="w-3.5 h-3.5 mr-1 sm:mr-1.5" />
               <span>前往 HKJC</span>
@@ -2697,7 +2708,21 @@ export default function App() {
                             <div className="space-y-2">
                               <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 在 HKJC 網頁使用</h4>
                               <div className="text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200 space-y-3">
-                                <p>1. 前往 <a href="https://bet.hkjc.com/ch/marksix/Single" target="_blank" rel="noreferrer" className="text-blue-600 underline">HKJC 六合彩投注網頁</a>。</p>
+                                <p>1. 前往 <a href="#" onClick={(e) => {
+                                  e.preventDefault();
+                                  const isAndroid = /Android/i.test(navigator.userAgent);
+                                  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+                                  if (isAndroid) {
+                                    window.open("intent://bet.hkjc.com/ch/marksix/Single#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fbet.hkjc.com%2Fch%2Fmarksix%2FSingle;end", "_top");
+                                  } else if (isIOS) {
+                                    window.open("googlechrome://bet.hkjc.com/ch/marksix/Single", "_top");
+                                    setTimeout(() => {
+                                      window.open("https://bet.hkjc.com/ch/marksix/Single", "_blank");
+                                    }, 1000);
+                                  } else {
+                                    window.open("https://bet.hkjc.com/ch/marksix/Single", "_blank");
+                                  }
+                                }} className="text-blue-600 underline font-bold">HKJC 六合彩投注網頁 (Chrome)</a>。</p>
                                 <div className="border-l-4 border-[#3b82f6] pl-2 py-1 mb-2 mt-2">
                                   <span className="text-black">Safari 用戶：</span><br/>
                                   點擊下方 <kbd className="bg-white px-1.5 py-0.5 rounded border border-black text-black text-xs">📖 書籤</kbd> 圖示，直接點擊 <kbd className="bg-[#FFE867] px-1 py-0.5 rounded border border-black text-black text-xs">自動按球</kbd>。
