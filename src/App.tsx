@@ -2857,7 +2857,7 @@ export default function App() {
                           )}
                           {(preferredOddCount !== null || oddEven !== 'all') && (
                             <li>
-                              單雙配置: {oddEven === 'all' ? '無限制' : oddEven === 'odd' ? '全單' : '全雙'}{preferredOddCount !== null ? ` (特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙)` : ''}
+                              單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}
                             </li>
                           )}
                           {colors.length < 3 && (
@@ -2873,7 +2873,18 @@ export default function App() {
                           {enableRecent && recentMode === "include" && <li>近期名單過濾: 只買近 {recentCount} 期號碼</li>}
                           {enableRecent && recentMode === "exclude" && <li>近期名單過濾: 排除近 {recentCount} 期號碼</li>}
                           {enableExcludeUnseen && <li>排除未開出過濾: 排除近 {excludeUnseenCount} 期內完全未開出的冷門號碼</li>}
-                          {enableComplexRecent && <li>複雜近期區間過濾: 已啟用</li>}
+                          {enableComplexRecent && (
+                            <li>
+                              複雜近期篩選區間: 
+                              <span className="ml-2 font-mono text-xs">
+                                [
+                                {complexIncludeRanges.map(r => `出 ${r.start}-${r.end}`).join(', ')}
+                                {complexIncludeRanges.length > 0 && complexExcludeRanges.length > 0 ? ' | ' : ''}
+                                {complexExcludeRanges.map(r => `沒出 ${r.start}-${r.end}`).join(', ')}
+                                ]
+                              </span>
+                            </li>
+                          )}
                           {excludedNumbers.length > 0 && <li>排除號碼: {excludedNumbers.join(', ')}</li>}
                           {luckyNumbers.length > 0 && <li>必含號碼: {luckyNumbers.join(', ')}</li>}
                         </ul>
@@ -2885,18 +2896,18 @@ export default function App() {
               </div>
             ) : (
               <div className="h-full min-h-[500px] flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full">
+                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '-13px', paddingBottom: '-15px' }}>
                   {nextDrawInfo && (
-                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'ridge' }}>
-                      <span className="text-xs sm:text-sm font-black px-3 py-0.5 rounded-full border-[2px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3.5 sm:-top-4 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest" style={{ backgroundColor: '#f060ff' }}>
+                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove' }}>
+                      <span className="text-xs sm:text-sm font-black px-3 py-0.5 rounded-full border-[2px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3.5 sm:-top-4 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest" style={{ backgroundColor: '#f060ff', fontSize: '19px' }}>
                          下一期預計頭獎
                       </span>
                       <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-1 font-black">
-                        <span className="text-[22px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#151414', fontWeight: 'normal' }}>
+                        <span className="text-[22px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#000000', fontWeight: 'bold', fontFamily: 'Verdana', borderStyle: 'outset', borderColor: '#fe0101' }}>
                           ${nextDrawInfo.estimatedJackpot.toLocaleString()}
                         </span>
                         <span className="text-black/30 font-black text-lg">|</span>
-                        <span className="text-xl sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontWeight: 'bold', fontFamily: 'system-ui', borderWidth: '-4px', borderStyle: 'none', textDecorationLine: 'none', color: 'black' }}>
+                        <span className="text-xl sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontFamily: 'Verdana', paddingLeft: '8px', paddingTop: '4px', borderStyle: 'outset', borderWidth: '-5px' }}>
                           {nextDrawInfo.date}
                         </span>
                       </div>
@@ -2908,7 +2919,7 @@ export default function App() {
                   </span>
                 </div>
                 
-                <div className="w-full flex-1 overflow-y-auto pr-1 space-y-2">
+                <div className="w-full flex-1 overflow-y-auto pr-1 space-y-2" style={{ marginLeft: '-18px', marginRight: '-18px' }}>
                   {liveResultsLoading ? (
                     <div className="flex justify-center items-center h-40">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
@@ -3625,7 +3636,7 @@ export default function App() {
                   )}
                   {(preferredOddCount !== null || oddEven !== 'all') && (
                     <li>
-                      單雙配置: {oddEven === 'all' ? '無限制' : oddEven === 'odd' ? '全單' : '全雙'}{preferredOddCount !== null ? ` (特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙)` : ''}
+                      單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}
                     </li>
                   )}
                   {colors.length < 3 && (
