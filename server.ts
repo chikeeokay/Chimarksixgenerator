@@ -7,7 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
 
   app.use(express.json({ limit: '10mb' }));
 
@@ -105,120 +105,110 @@ IMPORTANT RULES:
       
       // Check for Gemini API location block
       if (typeof errorMessage === 'string' && errorMessage.includes('User location is not supported')) {
-        errorMessage = "伺服器所在的地區不支援 Google Gemini API（Google 近期加強了對香港等地區的限制，導致原先可用的伺服器失效）。\n\n解決方案：\n1. 請在 Render 上「建立一個全新的 Web Service」，於 Region 選擇美國 (Oregon/Ohio) 或歐洲 (Frankfurt)。\n2. 將您的自訂網域綁定到新服務，這樣您的用戶就完全不受網址改變影響！\n\n【在 Render 設定 custom domain 教學】\n- 前往新 Web Service 的「Settings」頁面，找到「Custom Domains」板塊。\n- 輸入您的網域 `chikeechi.com` 並點擊「Add Domain」。\n- Render 會提供一組 DNS 紀錄（通常是 CNAME 或 A Record）。\n- 登入您的網域供應商 (例如 Cloudflare, GoDaddy 等)，在 DNS 設定中加入該組紀錄。\n- 等待生效後，您就可以繼續用原來的網址運作了！\n\n(註：只要伺服器位於支援地區，香港本地用戶即可正常使用，完全不需要 VPN！)";
-      } else if (typeof errorMessage === 'string' && (errorMessage.includes('429') || errorMessage.includes('Quota exceeded') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('Too Many Requests'))) {
-        errorMessage = "Google Gemini API 請求配額已達上限。\n\n目前的 Google 帳號免費額度（每日或每分鐘）已經用盡。請稍後（約 1 分鐘後）再試！若頻繁出現此錯誤，可能需要更換 API 密鑰。";
+        errorMessage = "伺服器所在的地區不支援 Google Gemini API（Google 近期加強了對香港等地區的限制，導致原先可用的伺服器失效）。";
       }
 
       return res.status(500).json({ error: errorMessage });
     }
   });
 
-  // API Route to fetch latest marksix results
   app.get("/api/marksix", async (req, res) => {
     try {
-      const draws: {numbers: number[], date: string}[] = [];
+      const draws: {numbers: number[], date: string, firstPrize?: number, firstPrizeWinners?: number}[] = [];
       const seen = new Set<string>();
 
-      try {
-        const iconv = await import("iconv-lite");
-        const lottoRes = await fetch("https://www.lotto-8.com/listltohk.asp", {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-          }
-        });
-        if (lottoRes.ok) {
-          const buffer = await lottoRes.arrayBuffer();
-          const lottoHtml = iconv.default.decode(Buffer.from(buffer), 'big5');
-          const $ = cheerio.load(lottoHtml);
-          
-          let currentDate = "";
-          let currentNums: number[] = [];
-          
-          // Parse lotto-8 layout
-          // They use table rows or divs containing the date and then the numbers
-          $('*').each((i, el) => {
-             const t = $(el).text().trim();
-             // Match date like 2026/05/07
-             if (/^\d{4}\/\d{2}\/\d{2}$/.test(t) && $(el).children().length === 0) {
-                 if (currentNums.length === 7 && currentDate) {
-                     const drawStr = currentNums.join(',');
-                     if (!seen.has(drawStr)) {
-                         seen.add(drawStr);
-                         draws.push({ numbers: currentNums, date: currentDate });
-                     }
-                 }
-                 currentDate = t;
-                 currentNums = [];
-             } else if (/^\d{2}$/.test(t) && currentDate && $(el).children().length === 0) {
-                 const n = parseInt(t, 10);
-                 if (n >= 1 && n <= 49) {
-                     currentNums.push(n);
-                 }
-                 if (currentNums.length === 7) {
-                     const drawStr = currentNums.join(',');
-                     if (!seen.has(drawStr)) {
-                         seen.add(drawStr);
-                         draws.push({ numbers: currentNums, date: currentDate });
-                     }
-                     currentDate = "";
-                     currentNums = [];
-                 }
-             }
-          });
-        }
-      } catch(lottoErr) {
-        console.error("Lotto-8 scrape failed:", lottoErr);
-      }
+      const years = [2026, 2025, 2024];
+      for (const year of years) {
+        try {
+          const response = await fetch(`https://on99.life/lottery/history/${year}`);
+          if (response.ok) {
+            const html = await response.text();
+            const $ = cheerio.load(html);
+            
+            let allScriptSources = '';
+            $('script').each((i, el) => {
+                const text = $(el).html();
+                if (text && text.includes('__next_f')) {
+                    allScriptSources += text;
+                }
+            });
 
-      // Try fetching from marksixinfo.com as fallback
-      try {
-        const response = await fetch('https://marksixinfo.com/latest20draws');
-        if (response.ok) {
-          const html = await response.text();
-          const $ = cheerio.load(html);
-          
-          const numDivs: number[] = [];
-          $('*').each((i, el) => {
-            const text = $(el).text().trim();
-            if (/^\d{1,2}$/.test(text) && $(el).children().length === 0) {
-              const num = parseInt(text, 10);
-              if (num >= 1 && num <= 49) {
-                numDivs.push(num);
-              }
-            }
-          });
-          
-          const dateTextRegex = /\d{4}-\d{2}-\d{2}/;
-          const allTexts = $('*').map((i, el) => $(el).text().trim()).get();
-          const dates = allTexts.filter(text => dateTextRegex.test(text)).filter(text => text.length === 10); // Find YYYY-MM-DD
-          const uniqueDates = [...new Set(dates)].map(d => {
-            const parts = d.split('-');
-            if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]}`; // Changed to YYYY/MM/DD format to match lotto-8
-            return d;
-          });
+            const resultsIdx = allScriptSources.indexOf('\\"results\\":[');
+            if (resultsIdx !== -1) {
+                const startStr = allScriptSources.slice(resultsIdx + '\\"results\\":'.length);
+                
+                const match = startStr.match(/^(\[.*?\]\]\}),\\"cacheStrategy\\"/);
+                let resultsStr = '[]';
+                if (match) {
+                   resultsStr = match[1];
+                } else {
+                   let openBracket = 0;
+                   let inString = false;
+                   let escape = false;
+                   for (let i = 0; i < startStr.length; i++) {
+                       const char = startStr[i];
+                       if (escape) {
+                           escape = false;
+                           continue;
+                       }
+                       if (char === '\\\\') {
+                           escape = true;
+                           continue;
+                       }
+                       if (char === '\\"') {
+                           inString = !inString;
+                           continue;
+                       }
+                       if (!inString) {
+                           if (char === '[') openBracket++;
+                           else if (char === ']') openBracket--;
+                       }
+                       if (openBracket === 0 && char === ']') {
+                           resultsStr = startStr.slice(0, i + 1);
+                           break;
+                       }
+                   }
+                }
 
-          for (let i = 0; i < numDivs.length; i += 7) {
-            if (i + 7 <= numDivs.length) {
-              const draw = numDivs.slice(i, i + 7);
-              const drawStr = draw.join(',');
-              if (!seen.has(drawStr)) {
-                seen.add(drawStr);
-                // Math index based roughly relative to how many we parsed, but uniqueDates should align if we assume first goes with first
-                const dateIdx = (i/7);
-                const date = uniqueDates[dateIdx] || "";
-                draws.push({numbers: draw, date});
-              }
+                if (resultsStr !== '[]') {
+                    const cleanedJson = JSON.parse('"' + resultsStr + '"');
+                    try {
+                        const parsed = JSON.parse(cleanedJson);
+                        if (Array.isArray(parsed)) {
+                            for (const p of parsed) {
+                                const numbers = [...(p.winningNumbers || []), p.extraNumber].filter(n => typeof n === 'number');
+                                if (numbers.length === 7) {
+                                    const date = p.drawDate || '';
+                                    const firstPrize = p.prizeBreakdown?.firstPrize?.totalPayout || p.jackpotAmount || p.prizeBreakdown?.firstPrize?.prizeAmount;
+                                    const firstPrizeWinners = p.prizeBreakdown?.firstPrize?.winnersCount;
+                                    const formattedDate = date.includes('-') ? date.split('-').join('/') : date;
+
+                                    const drawStr = numbers.join(',');
+                                    if (!seen.has(drawStr)) {
+                                        seen.add(drawStr);
+                                        draws.push({
+                                            numbers,
+                                            date: formattedDate,
+                                            firstPrize,
+                                            firstPrizeWinners
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    } catch(e) {
+                        console.error(`Failed to parse on99 results for ${year}:`, e);
+                    }
+                }
             }
           }
+        } catch (marksixErr) {
+          console.error(`on99.life scrape failed for ${year}:`, marksixErr);
         }
-      } catch (marksixErr) {
-        console.error("Marksixinfo scrape failed:", marksixErr);
       }
 
       // Fallback Dates
       for (const mockDrawObj of MOCK_PAST_RESULTS) {
-        // Handle both older structures if any mapping changed, but now it's an object array
         const mockArray = Array.isArray(mockDrawObj) ? mockDrawObj : mockDrawObj.numbers;
         const mockDate = !Array.isArray(mockDrawObj) && mockDrawObj.date ? mockDrawObj.date : `Past Draw`;
         
@@ -232,13 +222,11 @@ IMPORTANT RULES:
       // Sort draws by date descending
       draws.sort((a, b) => {
          const parseDate = (d: string) => {
-           const parts = d.split(/[/|-]/);
+           const parts = d.split(/[\/\-]/);
            if (parts.length === 3) {
              if (parts[0].length === 4) {
-               // YYYY/MM/DD
                return new Date(`${parts[0]}-${parts[1]}-${parts[2]}`).getTime();
              } else {
-               // DD/MM/YYYY
                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
              }
            }
@@ -247,7 +235,40 @@ IMPORTANT RULES:
          return parseDate(b.date) - parseDate(a.date);
       });
 
-      res.json({ success: true, draws });
+      let nextDraw = null;
+      if (draws.length > 0) {
+          const lastDrawDateStr = draws[0].date;
+          const parts = lastDrawDateStr.split(/[\/\-]/);
+          if (parts.length === 3) {
+              let lastDateObj: Date;
+              if (parts[0].length === 4) {
+                  lastDateObj = new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
+              } else {
+                  lastDateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+              }
+              lastDateObj.setDate(lastDateObj.getDate() + (lastDateObj.getDay() === 2 ? 2 : 2)); // simple logic, add 2 days. Or 3 if it's thursday. We will just add 2 or 3 days to make it Thu, Sat, or Tue
+              
+              let addDays = 2;
+              const currentDay = lastDateObj.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
+              if (currentDay === 2) addDays = 2; // Tue -> Thu
+              else if (currentDay === 4) addDays = 2; // Thu -> Sat
+              else if (currentDay === 6) addDays = 3; // Sat -> Tue
+              else addDays = 2; // Fallback
+              
+              lastDateObj.setDate(lastDateObj.getDate() + addDays);
+              
+              const yyyy = lastDateObj.getFullYear();
+              const mm = String(lastDateObj.getMonth() + 1).padStart(2, '0');
+              const dd = String(lastDateObj.getDate()).padStart(2, '0');
+              
+              nextDraw = {
+                  date: `${yyyy}/${mm}/${dd}`,
+                  estimatedJackpot: 8000000 // default minimum jackpot
+              };
+          }
+      }
+
+      res.json({ success: true, draws, nextDraw });
     } catch (error: any) {
       console.error("Error fetching Mark Six info:", error);
       res.status(500).json({ success: false, error: error.message });
@@ -255,11 +276,11 @@ IMPORTANT RULES:
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
+  if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
@@ -270,8 +291,8 @@ IMPORTANT RULES:
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:3000`);
   });
 }
 

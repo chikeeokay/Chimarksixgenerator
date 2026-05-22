@@ -29,7 +29,7 @@ export interface GenerateOptions {
   colorRatioOption?: number; // Ratio of color1 to color2, from 1 to 5. Means we need colorRatioOption of color2, and (6 - colorRatioOption) of color1
   recentMode?: "none" | "exclude" | "include"; // Mode for recent draws
   recentCount?: number; // How many recent draws to consider (1-10)
-  recentDraws?: number[][];
+  recentDraws?: any[];
   includeSpecial?: boolean; // Whether to include special numbers in recent draws
   mustInclude?: number[]; // Numbers that MUST be in every generated bet
   excludedNumbers?: number[]; // Numbers that MUST NOT be in generated bet
@@ -110,11 +110,14 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
     colorRatioOption = 3,
     recentMode = "none",
     recentCount = 5,
-    recentDraws = [],
+    recentDraws: rawRecentDrawsObj = [],
     includeSpecial = true,
     mustInclude = [],
     excludedNumbers = [],
   } = options;
+
+  const recentDrawsFull = rawRecentDrawsObj;
+  const recentDraws = rawRecentDrawsObj.map(draw => Array.isArray(draw) ? draw : draw.numbers) as number[][];
 
   let pool = MARK_SIX_NUMBERS.filter((num) => {
     // If it's a must include number, we don't strictly apply filters here if we want to force them,
@@ -186,6 +189,8 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
   }
 
   let aiWeightMap: Map<number, number> | undefined = undefined;
+  let aiOptimalSums: {min: number, max: number} | null = null;
+
   if (options.aiStrategy && recentDraws.length > 0) {
     aiWeightMap = new Map<number, number>();
     const freq20 = new Map<number, number>();
@@ -201,8 +206,40 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       skipMap.set(num, skip);
     }
     
+    // AI Advanced Pattern Logic: Payouts vs Ranges
+    // We analyze recentDrawsFull (which contains up to ~450 draws spanning ~3 years)
+    let highPayoutSums: number[] = [];
+    if (recentDrawsFull.length > 0 && typeof recentDrawsFull[0] === 'object' && !Array.isArray(recentDrawsFull[0])) {
+      let highPayoutFreq = new Map<number, number>();
+      let hpCount = 0;
+      for (const d of recentDrawsFull) {
+        if (d.firstPrize && d.firstPrize >= 24000000) {
+          const sum = d.numbers.slice(0, 6).reduce((a: number, b: number) => a + b, 0);
+          highPayoutSums.push(sum);
+          d.numbers.slice(0, 6).forEach((n: number) => highPayoutFreq.set(n, (highPayoutFreq.get(n) || 0) + 1));
+          hpCount++;
+        }
+      }
+      
+      if (hpCount >= 10 && options.aiStrategy === "balanced") {
+         // Determine optimal sum range based on high payouts
+         highPayoutSums.sort((a,b) => a-b);
+         const q1 = highPayoutSums[Math.floor(highPayoutSums.length * 0.25)];
+         const q3 = highPayoutSums[Math.floor(highPayoutSums.length * 0.75)];
+         aiOptimalSums = { min: q1 - 10, max: q3 + 10 }; // Keep within slightly expanded interquartile range of high payouts
+
+         // Adjust weights by high payout correlation
+         for (let num = 1; num <= 49; num++) {
+            const expect = hpCount * (6/49);
+            const actual = highPayoutFreq.get(num) || 0;
+            if (actual > expect * 1.5) aiWeightMap.set(num, 1.5);
+            else if (actual < expect * 0.5) aiWeightMap.set(num, 0.6);
+         }
+      }
+    }
+
     for (const num of pool) {
-      let w = 1.0;
+      let w = aiWeightMap.get(num) || 1.0;
       const f20 = freq20.get(num) || 0;
       const skip = skipMap.get(num) || 0;
       
@@ -282,6 +319,20 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
         // 70% 機率擋下極端值，30% 機率放行，增加多樣性
         if (Math.random() < 0.70) {
           validCounts = false;
+        }
+      }
+    }
+
+    if (validCounts && aiOptimalSums) {
+      const sum = betResult.numbers.reduce((a, b) => a + b, 0);
+      if (sum < aiOptimalSums.min || sum > aiOptimalSums.max) {
+        // High rejection rate if outside optimal payout sum range
+        if (Math.random() < 0.85) {
+          validCounts = false;
+        }
+      } else {
+        if (!betResult.explanations.includes(`派彩區間優化：總和 ${sum} 落在高派彩機率區間(${aiOptimalSums.min}-${aiOptimalSums.max})。`)) {
+          betResult.explanations.push(`派彩區間優化：總和 ${sum} 落在高派彩機率區間(${aiOptimalSums.min}-${aiOptimalSums.max})。`);
         }
       }
     }

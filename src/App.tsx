@@ -61,6 +61,7 @@ import {
 import { toPng } from "html-to-image";
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   generateBets,
   getBallColor,
@@ -87,6 +88,14 @@ const parseRanges = (input: string): {start: number, end: number}[] => {
   }
   return ranges;
 };
+
+export interface DrawInfo {
+  numbers: number[];
+  date: string;
+  turnover?: number;
+  firstPrize?: number;
+  firstPrizeWinners?: number;
+}
 
 export default function App() {
   const [betCount, setBetCount] = useState<number>(6);
@@ -129,6 +138,8 @@ export default function App() {
 
   // Check Results State
   const [isCheckDialogOpen, setIsCheckDialogOpen] = useState(false);
+  const [isAnalysisDialogOpen, setIsAnalysisDialogOpen] = useState(false);
+  const [payoutAnalysisDraws, setPayoutAnalysisDraws] = useState<number>(50);
   const [isStrategyInfoOpen, setIsStrategyInfoOpen] = useState(false);
   const [checkDrawIndex, setCheckDrawIndex] = useState<number>(0);
   const [checkMethod, setCheckMethod] = useState<"upload" | "manual">("upload");
@@ -148,8 +159,9 @@ export default function App() {
     setExcludedLegs([]);
   }, [generatedBets]);
 
-  const [liveResults, setLiveResults] = useState<{ numbers: number[], date: string }[] | number[][]>([]);
+  const [liveResults, setLiveResults] = useState<DrawInfo[] | any[]>([]);
   const [liveResultsLoading, setLiveResultsLoading] = useState(true);
+  const [nextDrawInfo, setNextDrawInfo] = useState<{date: string, estimatedJackpot: number} | null>(null);
 
   // Fetch live results on mount
   useEffect(() => {
@@ -159,6 +171,9 @@ export default function App() {
         const data = await res.json();
         if (data.success && data.draws && data.draws.length > 0) {
           setLiveResults(data.draws);
+          if (data.nextDraw) {
+            setNextDrawInfo(data.nextDraw);
+          }
         } else {
           setLiveResults(MOCK_PAST_RESULTS); // Fallback
         }
@@ -263,8 +278,7 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      // For generateBets, recentDraws needs to be number[][]
-      const rawRecentDraws = liveResults.map(getRawDrawNumbers);
+      // For generateBets, recentDraws can now handle both raw arrays and full DrawInfo objects
       const bets = generateBets({
         count: betCount,
         ranges,
@@ -276,7 +290,7 @@ export default function App() {
         colorRatioOption: colors.length === 2 ? colorRatioOption : undefined,
         recentMode: enableRecent ? (recentMode as "exclude" | "include") : "none",
         recentCount,
-        recentDraws: rawRecentDraws,
+        recentDraws: liveResults,
         includeSpecial,
         mustInclude: luckyNumbers,
         excludedNumbers: excludedNumbers,
@@ -362,11 +376,12 @@ export default function App() {
       const roundedComboPct = Math.round(comboPercentage * 100);
 
       const explanations = [
-        `大數據隱藏趨勢分析：透過深度拆解過去 ${aiAnalysisDraws} 期的開彩數據，比對冷熱號碼分佈（Hot/Cold Numbers）、單雙比例偏差及波色出現頻率，精確捕捉具備統計顯著性的變化。`,
-        `號碼間距與遺漏分析（Number Gaps and Skips）：追蹤號碼出現間距是否符合幾何分佈，並透過 FFG 算法 (賭博基本公式) 計算當前遺漏期數與期望期數，捕捉即將回歸均值的「壁花」號碼。`,
-        `總和值分佈與正態性（Sum Distribution）：依據大數定律和中心極限定理，確保最終生成的組合總和值落於正態分佈的中心區間 (即 Z-Score 合理範圍內)，避免極端偏離。`,
+        `大數據隱藏趨勢分析：透過深度拆解過去歷年逾數百期的開彩數據，比對冷熱號碼分佈、單雙偏差及波色出現頻率，精確捕捉具備統計顯著性的變化。`,
+        `預計頭獎與總和規律演算 (Jackpot Strategy)：AI 自動分析每次頭獎基金 (通常 > 2400 萬) 的勝出組合總和區間與邊界。我們針對高預計頭獎金額的組合進行數據擬合，透過動態演算法封鎖歷史頭獎金額較低的總和區間。`,
+        `號碼間距與遺漏分析（Number Gaps & Skips）：追蹤號碼出現間距是否符合幾何分佈，並透過 FFG 算法 (賭博基本公式) 計算當前遺漏期數與期望期數，捕捉即將回歸均值的「壁花」號碼。`,
+        `總和值分佈與正態性（Sum Distribution）：依據大數定律和中心極限定理，確保最終生成的組合總和值落入動態優化後的高潛力頭獎區間。`,
         filterExplanation,
-        `關聯挖掘與共現分析：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (約 ${totalComboBets} 注) 使用「同盟挖掘 (FP-Growth)」及「2合/3合策略」，自動尋找最高勝率的同伴號碼組合；同時應用飽和衰減 (Saturation Attenuation) 防止熱號陷阱。`
+        `關聯挖掘與共現分析：從 ${aiBetCount} 注中撥出約 ${roundedComboPct}% (約 ${totalComboBets} 注) 使用「同盟挖掘 (FP-Growth)」及同伴號碼組合；同時應用飽和衰減防止熱號陷阱。`
       ];
       setAiReasoning(explanations);
       
@@ -377,7 +392,7 @@ export default function App() {
         colors: ["red", "blue", "green"] as BallColor[],
         recentMode: "none" as const,
         recentCount: 5,
-        recentDraws: liveResults.map(getRawDrawNumbers),
+        recentDraws: liveResults,
         includeSpecial: false,
         mustInclude: [],
         excludedNumbers: [],
@@ -2251,14 +2266,16 @@ export default function App() {
                   </Button>
                 </div>
 
-                <Button
-                  variant="outline"
-                  className="w-fit bg-[#ffedd5] hover:bg-[#fed7aa] text-black h-auto py-1.5 px-4 text-base font-black border-4 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all mx-auto"
-                  onClick={() => setIsCheckDialogOpen(true)}
-                >
-                  <SearchCheck className="w-5 h-5 mr-1" />
-                  核對中獎號碼
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full justify-center mx-auto items-center mt-1">
+                  <Button
+                    variant="outline"
+                    className="w-fit bg-[#ffedd5] hover:bg-[#fed7aa] text-black h-auto py-1.5 px-4 text-base font-black border-4 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                    onClick={() => setIsCheckDialogOpen(true)}
+                  >
+                    <SearchCheck className="w-5 h-5 mr-1" />
+                    核對中獎號碼
+                  </Button>
+                </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 w-full justify-center mt-2 flex-wrap">
                   <Button
@@ -2433,8 +2450,10 @@ export default function App() {
                                   {uniqueGeneratedNumbers.filter(n => !bankers.includes(n)).map(num => {
                                     const isExcluded = excludedLegs.includes(num);
                                     const color = getBallColor(num);
-                                    let borderColor = color === "red" ? "border-red-300" : color === "blue" ? "border-blue-300" : "border-green-300";
-                                    let textColor = color === "red" ? "text-red-600" : color === "blue" ? "text-blue-600" : "text-green-600";
+                                    let bgColor = "bg-white";
+                                    if (color === "red") bgColor = "bg-[#FF9999]";
+                                    else if (color === "blue") bgColor = "bg-[#99CCFF]";
+                                    else if (color === "green") bgColor = "bg-[#99FF99]";
                                     
                                     if (isExcluded) {
                                       return (
@@ -2453,7 +2472,7 @@ export default function App() {
                                       <button
                                         key={num}
                                         onClick={() => handleToggleExcludedLeg(num)}
-                                        className={`w-[40px] h-[40px] sm:w-[44px] sm:h-[44px] rounded-full border-[3px] ${borderColor} font-black ${textColor} text-[22px] sm:text-[24px] leading-none pt-0.5 tracking-tighter flex items-center justify-center transition-all bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-100`}
+                                        className={`w-[40px] h-[40px] sm:w-[44px] sm:h-[44px] rounded-full border-[3px] border-black font-black text-black text-[22px] sm:text-[24px] leading-none pt-0.5 tracking-tighter flex items-center justify-center transition-all ${bgColor} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]`}
                                       >
                                         {num}
                                       </button>
@@ -2825,8 +2844,14 @@ export default function App() {
                         <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-zinc-700">
                           <li>
                             號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
-                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && !noConsecutivePairs && !noConsecutiveTriplets ? ' (純隨機生成，無其他過濾)' : ''}
+                            {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && bankers.length === 0 && !enableComplexRecent && !noConsecutivePairs && !noConsecutiveTriplets && (sumRange[0] === 21 && sumRange[1] === 279) ? ' (純隨機生成，無其他過濾)' : ''}
                           </li>
+                          {(sumRange[0] !== 21 || sumRange[1] !== 279) && (
+                            <li>總和值分數範圍: {sumRange[0]} - {sumRange[1]}</li>
+                          )}
+                          {bankers.length > 0 && (
+                            <li>定膽號碼: {bankers.join(', ')}</li>
+                          )}
                           {(noConsecutivePairs || noConsecutiveTriplets) && (
                             <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                           )}
@@ -2860,8 +2885,25 @@ export default function App() {
               </div>
             ) : (
               <div className="h-full min-h-[500px] flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center">
-                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full">
+                  {nextDrawInfo && (
+                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'ridge' }}>
+                      <span className="text-xs sm:text-sm font-black px-3 py-0.5 rounded-full border-[2px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3.5 sm:-top-4 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest" style={{ backgroundColor: '#f060ff' }}>
+                         下一期預計頭獎
+                      </span>
+                      <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-1 font-black">
+                        <span className="text-[22px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#151414', fontWeight: 'normal' }}>
+                          ${nextDrawInfo.estimatedJackpot.toLocaleString()}
+                        </span>
+                        <span className="text-black/30 font-black text-lg">|</span>
+                        <span className="text-xl sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontWeight: 'bold', fontFamily: 'system-ui', borderWidth: '-4px', borderStyle: 'none', textDecorationLine: 'none', color: 'black' }}>
+                          {nextDrawInfo.date}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2">
                     最近十期開獎結果
                   </span>
                 </div>
@@ -2955,6 +2997,17 @@ export default function App() {
                   {!liveResultsLoading && displayPastCount >= Math.min(liveResults.length, 50) && (
                      <div className="text-center mt-4 text-zinc-500 font-bold text-sm">已展示全部可用期數</div>
                   )}
+
+                  <div className="mt-6 flex w-full justify-center">
+                    <Button
+                      variant="outline"
+                      className="w-fit bg-[#bae6fd] hover:bg-[#7dd3fc] text-black h-auto py-1.5 px-4 text-base font-black border-4 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                      onClick={() => setIsAnalysisDialogOpen(true)}
+                    >
+                      <BarChart2 className="w-5 h-5 mr-1" />
+                      預計頭獎與總和分析
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3034,7 +3087,7 @@ export default function App() {
                   </DialogTitle>
                   <Button
                     onClick={() => setAnalysisDrawIndex(null)}
-                    className="bg-white hover:bg-zinc-100 text-black border-2 sm:border-2 border-black font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-lg h-9 sm:h-9 px-3 sm:px-4 text-sm sm:text-sm"
+                    className="bg-white hover:bg-zinc-100 text-black border-2 sm:border-2 border-black font-normal shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-lg h-9 sm:h-9 px-3 sm:px-4 text-sm sm:text-sm"
                   >
                     回到首頁
                   </Button>
@@ -3042,7 +3095,7 @@ export default function App() {
                 <div id="analysis-scroll-area" className="p-3 sm:p-4 pb-8 sm:pb-8 flex-1 flex flex-col gap-3 overflow-y-auto">
                   
                   {/* Current Draw Balls */}
-                  <div className="flex shrink-0 gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap justify-center items-center bg-zinc-50 border-[3px] border-black rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-1">
+                  <div className="flex shrink-0 gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap justify-center items-center bg-zinc-50 border-[3px] border-black rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-1">
                     {drawNumbers.map((num, i) => {
                       const isSpecial = i === 6;
                       const color = getBallColor(num);
@@ -3060,13 +3113,24 @@ export default function App() {
                     })}
                   </div>
 
+                  {!Array.isArray(drawObj) && drawObj.firstPrize !== undefined && drawObj.firstPrize > 0 && (
+                    <div className="bg-[#fffbeb] border-[3px] border-black rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex flex-row items-center justify-between mb-1 mt-1">
+                      <span className="font-normal text-zinc-700 text-sm sm:text-base">當期預計頭獎金額</span>
+                      <div className="text-right flex flex-col">
+                        <span className="font-normal text-lg sm:text-xl text-[#FF4D4D]">
+                          ${drawObj.firstPrize.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Single Draw Stats */}
                   <div className="flex flex-col shrink-0 gap-2 sm:gap-2 mb-1">
                     <h4 className="font-black text-xl sm:text-lg border-b-[3px] border-black pb-1 text-black">當期頭六碼分佈</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">大小區間分佈</span>
-                        <div className="flex gap-1.5 sm:gap-1.5 text-sm sm:text-sm font-black flex-wrap">
+                        <span className="text-sm sm:text-xs font-normal text-zinc-500 uppercase">大小區間分佈</span>
+                        <div className="flex gap-1.5 sm:gap-1.5 text-sm sm:text-sm font-normal flex-wrap">
                           {singleSizeDist.map(dist => (
                             <div key={dist.label} className="flex bg-white border-2 border-black rounded px-1.5 py-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                               <span className="text-zinc-600 mr-1 sm:mr-0.5">{dist.label}:</span>
@@ -3076,12 +3140,12 @@ export default function App() {
                         </div>
                       </div>
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
-                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">單雙分佈</span>
-                        <span className="text-xl sm:text-lg font-black">{singleOddCount} 單 : {singleEvenCount} 雙</span>
+                        <span className="text-sm sm:text-xs font-normal text-zinc-500 uppercase">單雙分佈</span>
+                        <span className="text-xl sm:text-lg font-normal">{singleOddCount} 單 : {singleEvenCount} 雙</span>
                       </div>
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
-                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">波色分佈</span>
-                        <span className="text-xl sm:text-lg font-black flex gap-2">
+                        <span className="text-sm sm:text-xs font-normal text-zinc-500 uppercase">波色分佈</span>
+                        <span className="text-xl sm:text-lg font-normal flex gap-2">
                           <span className="text-[#FF5C00]">{singleRedCount} 紅</span>
                           <span className="text-[#3b82f6]">{singleBlueCount} 藍</span>
                           <span className="text-[#22c55e]">{singleGreenCount} 綠</span>
@@ -3095,7 +3159,7 @@ export default function App() {
                     <h4 className="font-black text-xl sm:text-lg border-b-[3px] border-black pb-1 mb-0.5 text-[#3b82f6]">歷史趨勢追蹤</h4>
                     
                     <div className="flex items-center gap-2 bg-zinc-50 border-[3px] border-black py-1 px-2 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                      <Label className="font-bold text-sm sm:text-sm whitespace-nowrap">參考期數</Label>
+                      <Label className="font-normal text-sm sm:text-sm whitespace-nowrap">參考期數</Label>
                       <Slider
                         value={[Math.min(analysisRangeCount, Math.max(0, liveResults.length - (analysisDrawIndex + 1)))]}
                         min={1}
@@ -3116,10 +3180,10 @@ export default function App() {
                     {/* Aggregated Stats */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">
+                        <span className="text-sm sm:text-xs font-normal text-zinc-500 uppercase">
                           {recentDraws.length > 0 ? `第 ${startDisplayNumber} - ${endDisplayNumber} 期 大小分佈` : "暫無足夠歷史數據"}
                         </span>
-                        <div className="flex gap-1.5 sm:gap-1.5 text-sm sm:text-sm font-black flex-wrap">
+                        <div className="flex gap-1.5 sm:gap-1.5 text-sm sm:text-sm font-normal flex-wrap">
                           {aggSizeDist.map(dist => (
                             <div key={dist.label} className="flex bg-white border-2 border-black rounded px-1.5 py-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                               <span className="text-zinc-600 mr-1 sm:mr-0.5">{dist.label}:</span>
@@ -3129,16 +3193,16 @@ export default function App() {
                         </div>
                       </div>
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
-                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">
+                        <span className="text-sm sm:text-xs font-normal text-zinc-500 uppercase">
                            {recentDraws.length > 0 ? `第 ${startDisplayNumber} - ${endDisplayNumber} 期 單雙分佈` : "暫無足夠數據"}
                         </span>
-                        <span className="text-xl sm:text-lg font-black">{aggOddCount} 單 : {aggEvenCount} 雙</span>
+                        <span className="text-xl sm:text-lg font-normal">{aggOddCount} 單 : {aggEvenCount} 雙</span>
                       </div>
                       <div className="bg-zinc-50 border-[3px] border-black rounded-xl p-2 sm:p-2 sm:px-3 flex flex-col gap-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] justify-center">
-                        <span className="text-sm sm:text-xs font-bold text-zinc-500 uppercase">
+                        <span className="text-sm sm:text-xs font-normal text-zinc-500 uppercase">
                            {recentDraws.length > 0 ? `第 ${startDisplayNumber} - ${endDisplayNumber} 期 波色分佈` : "暫無足夠數據"}
                         </span>
-                        <span className="text-xl sm:text-lg font-black flex gap-2">
+                        <span className="text-xl sm:text-lg font-normal flex gap-2">
                           <span className="text-[#FF5C00]">{aggRedCount} 紅</span>
                           <span className="text-[#3b82f6]">{aggBlueCount} 藍</span>
                           <span className="text-[#22c55e]">{aggGreenCount} 綠</span>
@@ -3169,11 +3233,11 @@ export default function App() {
                                 {num}
                               </div>
                               <div className="flex flex-col gap-0 w-full overflow-hidden">
-                                <span className="font-black text-lg sm:text-base leading-tight">
+                                <span className="font-normal text-lg sm:text-base leading-tight">
                                   {isSpecial && "特碼 "}
-                                  共 <span className="text-[#3b82f6] text-xl sm:text-xl leading-none">{appearedIn.length}</span> 次
+                                  共 <span className="text-[#3b82f6] text-xl sm:text-xl leading-none font-normal">{appearedIn.length}</span> 次
                                 </span>
-                                <span className="text-sm sm:text-xs font-bold text-zinc-600 leading-[1.1] sm:leading-tight truncate w-full" title={appearedIn.length > 0 ? `(見於: 第 ${appearedIn.join(", ")} 期)` : "無歷史出現紀錄"}>
+                                <span className="text-sm sm:text-xs font-normal text-zinc-600 leading-[1.1] sm:leading-tight truncate w-full" title={appearedIn.length > 0 ? `(見於: 第 ${appearedIn.join(", ")} 期)` : "無歷史出現紀錄"}>
                                   {appearedIn.length > 0 ? `第 ${appearedIn.join(", ")} 期` : "歷史未出現"}
                                 </span>
                               </div>
@@ -3261,29 +3325,29 @@ export default function App() {
                                 <Sparkles className="w-6 h-6 text-[#16a34a]" />
                                 AI 大數據智能深度分析
                             </h3>
-                            <div className="space-y-4 text-sm sm:text-[15px] font-bold text-zinc-800 relative z-10">
+                            <div className="space-y-4 text-sm sm:text-[15px] font-normal text-zinc-800 relative z-10">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                   <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">分佈範圍</div>
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-green-800">分佈範圍</div>
                                     <div>{minNum} 至 {maxNum}</div>
                                   </div>
                                   <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">單雙比例</div>
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-green-800">單雙比例</div>
                                     <div>{oddCount} 單 {evenCount} 雙</div>
                                   </div>
                                   <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">波色分佈</div>
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-green-800">波色分佈</div>
                                     <div className="text-sm">{colorStr}</div>
                                   </div>
                                   <div className="flex bg-white border-2 border-black rounded-lg p-3 items-center gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-green-800">總和區間</div>
+                                    <div className="bg-green-100 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-green-800">總和區間</div>
                                     <div>{sum} <span className="text-zinc-500 text-xs ml-1">({sumCategory})</span></div>
                                   </div>
                                 </div>
                                 
                                 <div className="flex bg-white border-2 border-black rounded-lg p-3 flex-col items-start gap-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
                                   <div className="flex items-center gap-3 w-full">
-                                    <div className="bg-orange-100 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-orange-800">特殊形態</div>
+                                    <div className="bg-orange-100 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-orange-800">特殊形態</div>
                                     <div className="flex-1 flex flex-wrap gap-2">
                                       {consecutives > 0 ? (
                                         <span className="bg-red-100 border border-red-300 text-red-800 px-2 py-0.5 rounded text-xs">出現 {consecutives} 組連號</span>
@@ -3304,8 +3368,8 @@ export default function App() {
 
                                 <div className="flex bg-white border-2 border-black rounded-lg p-3 flex-col items-start gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
                                   <div className="flex items-center gap-3">
-                                    <div className="bg-yellow-200 border-2 border-black rounded-full px-3 py-1 font-black text-xs shrink-0 text-yellow-900">近期冷熱</div>
-                                    <div className="text-sm">近 5 期重出 <span className="text-[#3b82f6] font-black text-base">{recentMatches5}</span> 號 / 近 10 期重出 <span className="text-[#3b82f6] font-black text-base">{recentMatches10}</span> 號</div>
+                                    <div className="bg-yellow-200 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-yellow-900">近期冷熱</div>
+                                    <div className="text-sm">近 5 期重出 <span className="text-[#3b82f6] font-normal text-base">{recentMatches5}</span> 號 / 近 10 期重出 <span className="text-[#3b82f6] font-normal text-base">{recentMatches10}</span> 號</div>
                                   </div>
                                 </div>
 
@@ -3315,14 +3379,14 @@ export default function App() {
                                     <span className="text-xl">🤖</span> AI 智能綜合建議
                                   </div>
                                   <ul className="list-disc pl-5 space-y-1.5 text-[14px] text-zinc-200">
-                                    <li>這期總和為 <strong>{sum} ({sumCategory})</strong>，號碼分佈{consecutives > 0 ? '偏向聚集' : '較為分散'}。</li>
+                                    <li>這期總和為 <span className="font-normal">{sum} ({sumCategory})</span>，號碼分佈{consecutives > 0 ? '偏向聚集' : '較為分散'}。</li>
                                     {emptyZones.length > 0 && (
-                                      <li>出現明顯「斷區」，未來若針對這類趨勢，可善用「自訂號碼分析範圍」排除 <strong>{emptyZones.join('、')}</strong>。</li>
+                                      <li>出現明顯「斷區」，未來若針對這類趨勢，可善用「自訂號碼分析範圍」排除 <span className="font-normal">{emptyZones.join('、')}</span>。</li>
                                     )}
                                     {commonTails.length > 0 && (
                                       <li>同尾數效應 ({commonTails.join(', ')}) 發生，適時挑選尾數靈感有助提升機率。</li>
                                     )}
-                                    <li><strong>{recentStrategySuggestion}</strong></li>
+                                    <li><span className="font-normal">{recentStrategySuggestion}</span></li>
                                   </ul>
                                 </div>
 
@@ -3548,8 +3612,14 @@ export default function App() {
                 <ul className="list-disc pl-6 space-y-2 text-base font-bold text-zinc-700">
                   <li>
                     號碼範圍: {ranges.map(r => `${r.start}-${r.end}`).join(', ')}
-                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && !enableComplexRecent && !noConsecutivePairs && !noConsecutiveTriplets ? ' (純隨機生成，無其他過濾)' : ''}
+                    {preferredOddCount === null && oddEven === 'all' && colors.length === 3 && !use3Combos && !use2Combos && !enableRecent && !enableExcludeUnseen && excludedNumbers.length === 0 && luckyNumbers.length === 0 && bankers.length === 0 && !enableComplexRecent && !noConsecutivePairs && !noConsecutiveTriplets && (sumRange[0] === 21 && sumRange[1] === 279) ? ' (純隨機生成，無其他過濾)' : ''}
                   </li>
+                  {(sumRange[0] !== 21 || sumRange[1] !== 279) && (
+                    <li>總和值分數範圍: {sumRange[0]} - {sumRange[1]}</li>
+                  )}
+                  {bankers.length > 0 && (
+                    <li>定膽號碼: {bankers.join(', ')}</li>
+                  )}
                   {(noConsecutivePairs || noConsecutiveTriplets) && (
                     <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                   )}
@@ -3954,6 +4024,307 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAnalysisDialogOpen} onOpenChange={setIsAnalysisDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl bg-white border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
+          <DialogHeader className="bg-[#bae6fd] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0">
+            <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-black">
+              <BarChart2 className="w-6 h-6 sm:w-7 sm:h-7" />
+              預計頭獎與總和規律分析
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 sm:p-5 flex-1 overflow-y-auto min-h-0 custom-scrollbar flex flex-col gap-4">
+            <div className="text-sm sm:text-base font-bold text-zinc-700 bg-blue-50 border-2 border-blue-200 p-3 rounded-xl">
+              💡 <strong>預計頭獎與總和分析：</strong> AI 統計各個預計頭獎區間的歷史中獎數據，發現頭獎金額往往與總和及特定號碼規律（如連號）有關。高預計頭獎的號碼分佈往往較偏鋒，可作為選號的重要指標。
+            </div>
+
+            <div className="flex flex-col gap-2 bg-white border-[3px] border-black p-3 sm:p-4 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex justify-between items-center font-bold text-sm sm:text-base text-zinc-700">
+                <span className="text-base font-bold text-black">分析期數限制</span>
+                <span className="font-black text-[15px] sm:text-lg text-black bg-[#FFD700] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                  近 {payoutAnalysisDraws} 期
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="text-xs font-bold text-zinc-500">1期</span>
+                <div className="flex-1 px-1">
+                  <Slider
+                    value={[payoutAnalysisDraws]}
+                    max={200}
+                    min={1}
+                    step={1}
+                    onValueChange={(val) => {
+                      const newValue = Array.isArray(val) ? val[0] : val;
+                      setPayoutAnalysisDraws(newValue);
+                    }}
+                    className="cursor-pointer py-2"
+                  />
+                </div>
+                <span className="text-xs font-bold text-zinc-500">200期</span>
+              </div>
+              <span className="text-xs text-zinc-500 font-bold self-end">預設分析 50 期</span>
+            </div>
+
+            {(() => {
+              const brackets = [
+                { label: '無估計或低於1000萬', max: 9999999, min: 0, items: [] as any[] },
+                { label: '1,000萬 - 2,999萬', max: 29999999, min: 10000000, items: [] as any[] },
+                { label: '3,000萬 - 0.99億', max: 99999999, min: 30000000, items: [] as any[] },
+                { label: '1億 - 1.99億', max: 199999999, min: 100000000, items: [] as any[] },
+                { label: '2億或以上', max: Infinity, min: 200000000, items: [] as any[] },
+              ];
+
+              const validDraws = liveResults
+                .slice(0, payoutAnalysisDraws)
+                .filter(d => typeof d !== 'undefined' && !Array.isArray(d));
+              validDraws.forEach(d => {
+                if(Array.isArray(d)) return;
+                const top6 = d.numbers.slice(0, 6);
+                const sum = top6.reduce((a, b) => a + b, 0);
+                const sorted = [...top6].sort((a,b)=>a-b);
+                let hasConsecutive = false;
+                for(let i=0; i<sorted.length-1; i++) {
+                  if(sorted[i+1] - sorted[i] === 1) hasConsecutive = true;
+                }
+                
+                const prize = d.firstPrize || 0;
+                for (let b of brackets) {
+                  if (prize >= b.min && prize <= b.max) {
+                    b.items.push({ num: top6, sum, hasConsecutive });
+                    break;
+                  }
+                }
+              });
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {brackets.map((b, idx) => {
+                    const hasItems = b.items.length > 0;
+                    const sums = b.items.map(i => i.sum);
+                    const avgSum = hasItems ? Math.round(sums.reduce((a,b)=>a+b,0) / sums.length) : '-';
+                    const minSum = hasItems ? Math.min(...sums) : '-';
+                    const maxSum = hasItems ? Math.max(...sums) : '-';
+                    const consPct = hasItems ? Math.round((b.items.filter(i => i.hasConsecutive).length / b.items.length) * 100) : '-';
+                    
+                    // Extra stats
+                    let oddCount = 0, evenCount = 0;
+                    let rCount = 0, gCount = 0, bColorCount = 0;
+                    let range1 = 0, range10 = 0, range20 = 0, range30 = 0, range40 = 0;
+                    
+                    if (hasItems) {
+                      b.items.forEach(i => {
+                        i.num.forEach((n: number) => {
+                          if (n % 2 !== 0) oddCount++; else evenCount++;
+                          const c = getBallColor(n);
+                          if (c === 'red') rCount++; else if (c === 'blue') bColorCount++; else gCount++;
+                          
+                          if (n < 10) range1++;
+                          else if (n < 20) range10++;
+                          else if (n < 30) range20++;
+                          else if (n < 40) range30++;
+                          else range40++;
+                        });
+                      });
+                    }
+                    
+                    const totalNums = oddCount + evenCount || 1;
+                    const oddPct = hasItems ? Math.round((oddCount / totalNums) * 100) : '-';
+                    const evenPct = hasItems ? Math.round((evenCount / totalNums) * 100) : '-';
+                    
+                    const rcPct = hasItems ? Math.round((rCount / totalNums) * 100) : '-';
+                    const bcPct = hasItems ? Math.round((bColorCount / totalNums) * 100) : '-';
+                    const gcPct = hasItems ? Math.round((gCount / totalNums) * 100) : '-';
+                    
+                    const r1Pct = hasItems ? Math.round((range1 / totalNums) * 100) : '-';
+                    const r10Pct = hasItems ? Math.round((range10 / totalNums) * 100) : '-';
+                    const r20Pct = hasItems ? Math.round((range20 / totalNums) * 100) : '-';
+                    const r30Pct = hasItems ? Math.round((range30 / totalNums) * 100) : '-';
+                    const r40Pct = hasItems ? Math.round((range40 / totalNums) * 100) : '-';
+
+                    return (
+                      <div key={idx} className={`bg-white border-[3px] border-black p-3 sm:p-4 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 ${!hasItems ? 'opacity-60' : ''}`}>
+                        <div className="font-black text-base sm:text-lg text-black border-b-[3px] border-black pb-1 mb-1 flex items-center justify-between">
+                          <span>{b.label}</span>
+                          <span className="text-zinc-500 text-xs sm:text-sm bg-zinc-100 border border-black px-1.5 py-0.5 rounded-md shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">共 {b.items.length} 期</span>
+                        </div>
+                        <div className="flex flex-col gap-1 text-sm font-bold text-zinc-700">
+                          <div className="flex justify-between items-center bg-orange-50 px-2 py-1 border-l-4 border-orange-400">
+                            <span>總和區間 (Min-Max):</span>
+                            <span className="text-orange-600 font-black">{hasItems ? `${minSum} - ${maxSum}` : '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-blue-50 px-2 py-1 border-l-4 border-blue-400">
+                            <span>平均總和:</span>
+                            <span className="text-blue-600 font-black">{avgSum}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-green-50 px-2 py-1 border-l-4 border-green-400">
+                            <span>含連號機率:</span>
+                            <span className="text-green-600 font-black">{hasItems ? `${consPct}%` : '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-purple-50 px-2 py-1 border-l-4 border-purple-400 mt-1">
+                            <span>單雙比:</span>
+                            <span className="text-purple-600 font-black">{hasItems ? `${oddPct}% / ${evenPct}%` : '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-zinc-50 px-2 py-1 border-l-4 border-zinc-400">
+                            <span>波色分佈:</span>
+                            <div className="flex gap-1.5">
+                              {hasItems ? (
+                                <>
+                                  <span className="text-[#FF4D4D] font-black">{rcPct}%</span>
+                                  <span className="text-[#3b82f6] font-black">{bcPct}%</span>
+                                  <span className="text-[#16a34a] font-black">{gcPct}%</span>
+                                </>
+                              ) : '-'}
+                            </div>
+                          </div>
+                          <div className="flex flex-col bg-yellow-50 px-2 py-1.5 border-l-4 border-yellow-400 mt-1 gap-1">
+                            <span>區間分佈:</span>
+                            {hasItems ? (
+                              <div className="grid grid-cols-5 gap-1 text-[10px] sm:text-xs text-center border-t border-yellow-200 pt-1 mt-0.5">
+                                <div className="flex flex-col"><span className="text-zinc-500">1-9</span><span className="font-black text-black">{r1Pct}%</span></div>
+                                <div className="flex flex-col"><span className="text-zinc-500">10s</span><span className="font-black text-black">{r10Pct}%</span></div>
+                                <div className="flex flex-col"><span className="text-zinc-500">20s</span><span className="font-black text-black">{r20Pct}%</span></div>
+                                <div className="flex flex-col"><span className="text-zinc-500">30s</span><span className="font-black text-black">{r30Pct}%</span></div>
+                                <div className="flex flex-col"><span className="text-zinc-500">40s</span><span className="font-black text-black">{r40Pct}%</span></div>
+                              </div>
+                            ) : <span className="text-right text-yellow-600 font-black">-</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {(() => {
+              const chartData = liveResults
+                .slice(0, payoutAnalysisDraws)
+                .filter(d => typeof d !== 'undefined' && !Array.isArray(d))
+                .map(d => {
+                  const nums = !Array.isArray(d) && d.numbers ? d.numbers.slice(0, 6) : [];
+                  const sum = nums.reduce((a, b) => a + b, 0);
+                  const firstPrize = (!Array.isArray(d) && d.firstPrize) ? d.firstPrize : 0;
+                  const payoutInMillions = Math.round((firstPrize / 1000000) * 10) / 10;
+                  return {
+                    date: getDrawDateStr(d),
+                    sum: sum,
+                    payout: payoutInMillions,
+                    payoutOriginal: firstPrize,
+                    winners: !Array.isArray(d) ? d.firstPrizeWinners : null,
+                    nums: nums
+                  };
+                });
+
+              if (chartData.length === 0) {
+                return (
+                  <div className="w-full h-[200px] mt-2 flex items-center justify-center bg-zinc-50 border-2 border-dashed border-zinc-300 rounded-lg">
+                    <p className="text-zinc-500 font-bold">該期數範圍內沒有預計頭獎記錄</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="w-full h-[400px] mt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.5} />
+                      <XAxis 
+                        type="number" 
+                        dataKey="sum" 
+                        name="號碼總和" 
+                        unit="" 
+                        domain={[21, 279]}
+                        label={{ value: '號碼總和 (6個號碼相加)', position: 'insideBottom', offset: -10, fontWeight: 'bold' }} 
+                      />
+                      <YAxis 
+                        type="number" 
+                        dataKey="payout" 
+                        name="預計頭獎 (百萬)" 
+                        unit="m" 
+                        domain={['auto', 'auto']}
+                        tickFormatter={(val) => `${val}m`}
+                        label={{ value: '預計頭獎 (百萬港元)', angle: -90, position: 'insideLeft', offset: -10, fontWeight: 'bold' }} 
+                      />
+                      <RechartsTooltip 
+                        cursor={{ strokeDasharray: '3 3' }}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white border-[3px] border-black p-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-lg font-bold">
+                                <p className="text-base border-b-2 border-zinc-200 pb-1 mb-1">{data.date}</p>
+                                <p className="text-[#3b82f6]">總和: {data.sum}</p>
+                                <p className="text-[#FF4D4D]">預計頭獎: {data.payoutOriginal ? `$${data.payoutOriginal.toLocaleString()}` : <span className="text-zinc-400 text-sm">無金額數據</span>}</p>
+                                <p className="text-zinc-600 text-sm mt-1">號碼: {data.nums.join(', ')}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Scatter name="開彩數據" data={chartData}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill="#3b82f6" />
+                        ))}
+                      </Scatter>
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
+
+            <div className="overflow-x-auto rounded-xl border-[3px] border-black hide-scrollbar shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2">
+              <table className="w-full text-left font-bold text-sm sm:text-base border-collapse min-w-[500px]">
+                <thead className="bg-[#f1f5f9] border-b-[3px] border-black">
+                  <tr>
+                    <th className="p-2 sm:p-3 whitespace-nowrap">日期</th>
+                    <th className="p-2 sm:p-3 whitespace-nowrap text-center">號碼</th>
+                    <th className="p-2 sm:p-3 whitespace-nowrap text-center">總和</th>
+                    <th className="p-2 sm:p-3 whitespace-nowrap text-right">預計頭獎</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveResults
+                    .slice(0, payoutAnalysisDraws)
+                    .filter(d => !Array.isArray(d))
+                    .map((d, i) => {
+                      if (Array.isArray(d)) return null;
+                      const nums = d.numbers.slice(0, 6);
+                      const sum = nums.reduce((a, b) => a + b, 0);
+                      const isHighPrize = (d.firstPrize || 0) > 30000000;
+                      return (
+                        <tr key={i} className={`border-b-2 border-black/10 ${isHighPrize ? 'bg-orange-50' : ''}`}>
+                          <td className="p-2 sm:p-3 whitespace-nowrap">{d.date}</td>
+                          <td className="p-2 sm:p-3 text-center tracking-widest">{nums.join(', ')}</td>
+                          <td className="p-2 sm:p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded border border-black ${sum < 100 ? 'bg-blue-200 text-blue-900' : sum > 200 ? 'bg-red-200 text-red-900' : 'bg-green-200 text-green-900'}`}>
+                              {sum}
+                            </span>
+                          </td>
+                          <td className="p-2 sm:p-3 whitespace-nowrap text-right text-[#FF4D4D] font-black">
+                            {d.firstPrize ? `$${d.firstPrize.toLocaleString()}` : <span className="text-zinc-400 text-sm">無金額數據</span>} <span className="text-xs text-zinc-500">/ {d.firstPrizeWinners ?? 0}注</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {liveResults.filter(d => !Array.isArray(d)).length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="p-4 text-center text-zinc-500">系統正在分析最近的數據，請稍後...</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="flex justify-center mt-2">
+              <Button onClick={() => setIsAnalysisDialogOpen(false)} className="border-4 border-black font-black text-black bg-zinc-200 hover:bg-zinc-300 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-xl px-8 h-12 text-lg">
+                關閉
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
