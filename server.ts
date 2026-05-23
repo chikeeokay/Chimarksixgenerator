@@ -151,11 +151,11 @@ IMPORTANT RULES:
                            escape = false;
                            continue;
                        }
-                       if (char === '\\\\') {
+                       if (char === '\\') {
                            escape = true;
                            continue;
                        }
-                       if (char === '\\"') {
+                       if (char === '"') {
                            inString = !inString;
                            continue;
                        }
@@ -171,9 +171,9 @@ IMPORTANT RULES:
                 }
 
                 if (resultsStr !== '[]') {
-                    const cleanedJson = JSON.parse('"' + resultsStr + '"');
+                    const cleanedStr = resultsStr.replace(/\\"/g, '"');
                     try {
-                        const parsed = JSON.parse(cleanedJson);
+                        const parsed = JSON.parse(cleanedStr);
                         if (Array.isArray(parsed)) {
                             for (const p of parsed) {
                                 const numbers = [...(p.winningNumbers || []), p.extraNumber].filter(n => typeof n === 'number');
@@ -219,6 +219,87 @@ IMPORTANT RULES:
         }
       }
       
+      let nextDrawFound: any = null;
+      // Fetch 最新和下一期 from HKJC GraphQL
+      try {
+        const query = `query marksixDraw {
+          timeOffset {
+            m6
+            ts
+          }
+          lotteryDraws {
+            id
+            year
+            no
+            openDate
+            closeDate
+            drawDate
+            status
+            snowballCode
+            snowballName_en
+            snowballName_ch
+            lotteryPool {
+              sell
+              status
+              totalInvestment
+              jackpot
+              unitBet
+              estimatedPrize
+              derivedFirstPrizeDiv
+              lotteryPrizes {
+                type
+                winningUnit
+                dividend
+              }
+            }
+            drawResult {
+              drawnNo
+              xDrawnNo
+            }
+          }
+        }`;
+        const hkjcRes = await fetch("https://info.cld.hkjc.com/graphql/base/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
+          body: JSON.stringify({ query, operationName: "marksixDraw" })
+        });
+        const hkjcData = await hkjcRes.json();
+        const lotteryDraws = hkjcData?.data?.lotteryDraws || [];
+        
+        for (const draw of lotteryDraws) {
+          const date = draw.drawDate ? draw.drawDate.split('+')[0].replace(/-/g, '/') : '';
+          if (draw.status === "Defined" || (draw.status !== "Result" && !draw.drawResult?.drawnNo?.length)) {
+             // This is the next draw
+             if (!nextDrawFound) {
+                 nextDrawFound = {
+                     date,
+                     estimatedJackpot: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 8000000
+                 };
+             }
+          } else if (draw.status === "Result" && draw.drawResult?.drawnNo?.length === 6) {
+             // This is a past draw, make sure it's in our draws array
+             const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
+             const drawStr = numbers.join(',');
+             if (!seen.has(drawStr)) {
+                 seen.add(drawStr);
+                 let firstPrizeWinners = 0;
+                 if (draw.lotteryPool?.lotteryPrizes) {
+                     const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
+                     if (fPrize) firstPrizeWinners = fPrize.winningUnit;
+                 }
+                 draws.push({
+                     numbers,
+                     date,
+                     firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
+                     firstPrizeWinners
+                 });
+             }
+          }
+        }
+      } catch (e) {
+         console.error("Failed to fetch HKJC GraphQL:", e);
+      }
+
       // Sort draws by date descending
       draws.sort((a, b) => {
          const parseDate = (d: string) => {
@@ -235,8 +316,8 @@ IMPORTANT RULES:
          return parseDate(b.date) - parseDate(a.date);
       });
 
-      let nextDraw = null;
-      if (draws.length > 0) {
+      let nextDraw = nextDrawFound;
+      if (!nextDraw && draws.length > 0) {
           const lastDrawDateStr = draws[0].date;
           const parts = lastDrawDateStr.split(/[\/\-]/);
           if (parts.length === 3) {
@@ -246,8 +327,6 @@ IMPORTANT RULES:
               } else {
                   lastDateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
               }
-              lastDateObj.setDate(lastDateObj.getDate() + (lastDateObj.getDay() === 2 ? 2 : 2)); // simple logic, add 2 days. Or 3 if it's thursday. We will just add 2 or 3 days to make it Thu, Sat, or Tue
-              
               let addDays = 2;
               const currentDay = lastDateObj.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
               if (currentDay === 2) addDays = 2; // Tue -> Thu

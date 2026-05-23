@@ -2895,10 +2895,10 @@ export default function App() {
 
               </div>
             ) : (
-              <div className="h-full min-h-[500px] flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '-13px', paddingBottom: '-15px' }}>
+              <div className="h-full min-h-[500px] flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '3px' }}>
+                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '-13px', paddingBottom: '-15px', marginBottom: '11px', marginRight: '0px' }}>
                   {nextDrawInfo && (
-                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove' }}>
+                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove', paddingBottom: '7px' }}>
                       <span className="text-xs sm:text-sm font-black px-3 py-0.5 rounded-full border-[2px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3.5 sm:-top-4 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest" style={{ backgroundColor: '#f060ff', fontSize: '19px' }}>
                          下一期預計頭獎
                       </span>
@@ -2914,7 +2914,7 @@ export default function App() {
                     </div>
                   )}
                   
-                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2">
+                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
                     最近十期開獎結果
                   </span>
                 </div>
