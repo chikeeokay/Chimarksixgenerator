@@ -172,6 +172,10 @@ export default function App() {
   const [aiReasoning, setAiReasoning] = useState<string[]>([]);
   const [aiBankerMode, setAiBankerMode] = useState(false);
   const [aiBankerBudget, setAiBankerBudget] = useState(100);
+  const [coverUnselectedMode, setCoverUnselectedMode] = useState(false);
+  const [coverBudget, setCoverBudget] = useState(100);
+  const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
+  const [specialCoverBets, setSpecialCoverBets] = useState<any[]>([]);
 
   useEffect(() => {
     setBankers([]);
@@ -283,6 +287,123 @@ export default function App() {
     setCombo3Count(1);
   };
 
+  const handleAddCoverUnselectedBet = () => {
+    // 為了計算未選號碼，我們需要看 generatedBets (這裡只看原本的，因為全覆蓋是用來生成新的一頁)
+    const allGeneratedNumbers = [...generatedBets].map((b: any) => b.numbers).flat();
+    const usedNums = new Set<number>(allGeneratedNumbers);
+    const unselected = Array.from({length: 49}, (_, i) => i + 1).filter(n => !usedNums.has(n));
+    
+    if (unselected.length === 0) {
+      toast.success("太強了！所有 49 個號碼已經被全數覆蓋。");
+      setIsCoverDialogOpen(false);
+      return;
+    }
+
+    let shuffledUnselected = [...unselected].sort(() => 0.5 - Math.random());
+    let isBanker = true;
+    let bankers: number[] = [];
+    let legs: number[] = [];
+    
+    // 計算冷門號碼列表 (用作補充)
+    const counts = Array(50).fill(0);
+    MOCK_PAST_RESULTS.slice(0, 50).forEach(draw => {
+      draw.numbers.forEach((n: number) => counts[n]++);
+      counts[draw.special] += 0.5;
+    });
+    // 所有可用的補充號碼 (非 unselected 的) 排列，由冷到熱
+    const availableExtras = Array.from({length: 49}, (_, i) => i + 1)
+      .filter(n => !unselected.includes(n))
+      .sort((a, b) => {
+         if (counts[a] === counts[b]) return Math.random() - 0.5;
+         return counts[a] - counts[b]; // 由冷到熱
+      });
+
+    let maxAffordableLegs = Math.floor(coverBudget / 10);
+
+    if (unselected.length <= 5) {
+      // 情況 A：未選號碼很少 (<= 5)
+      // 將所有未選號碼直接設為「膽」！
+      bankers = [...shuffledUnselected];
+      const neededLegsPerCombo = 6 - bankers.length;
+      
+      // 尋找最大可負擔的腳數 N (利用 C(N, neededLegsPerCombo))
+      let N = neededLegsPerCombo;
+      while (getCombinationsCount(N + 1, neededLegsPerCombo) * 10 <= coverBudget && N + 1 <= 44) {
+        N++;
+      }
+      
+      // 至少要有足够的腳來湊成 6 個號碼
+      N = Math.max(N, neededLegsPerCombo);
+      legs = availableExtras.slice(0, N);
+      
+      // 如果腳數等於所需的，這其實是一注單式
+      if (N === neededLegsPerCombo) {
+        isBanker = false;
+      }
+    } else {
+      // 情況 B：未選號碼超過 5 個
+      // 從未選號碼中抽出 5 個作為「膽」
+      bankers = shuffledUnselected.slice(0, 5);
+      
+      // 剩餘的未選號碼作為「腳」
+      let requiredLegs = shuffledUnselected.slice(5);
+      
+      if (maxAffordableLegs < 2) {
+         // 預算不足 $20，無法拖膽，只能買一注單式 (6個號碼)
+         bankers = [];
+         legs = shuffledUnselected.slice(0, 6);
+         isBanker = false;
+      } else {
+         // 預算可以買多注
+         let N = Math.min(requiredLegs.length, maxAffordableLegs);
+         
+         if (maxAffordableLegs > requiredLegs.length) {
+            // 預算充裕，加入冷門號碼
+            const extraCount = maxAffordableLegs - requiredLegs.length;
+            legs = [...requiredLegs, ...availableExtras.slice(0, extraCount)];
+         } else {
+            // 受預算限制
+            legs = requiredLegs.slice(0, N);
+         }
+         
+         // 至少 2 隻腳才算拖膽
+         if (legs.length < 2) {
+           legs.push(...availableExtras.slice(0, 2 - legs.length));
+         }
+      }
+    }
+
+    if (isBanker && (bankers.length === 0 || legs.length < 2 || bankers.length + legs.length < 7)) {
+       isBanker = false;
+    }
+
+    let bCount = bankers.length;
+    let selectedBankers = bankers.sort((a,b)=>a-b);
+    let selectedLegs = legs.sort((a,b)=>a-b);
+    const actualCost = isBanker ? getCombinationsCount(selectedLegs.length, 6 - bCount) * 10 : 10;
+    
+    const newBet = {
+      id: `unselected-cover-${Date.now()}`,
+      numbers: [...selectedBankers, ...selectedLegs],
+      explanations: isBanker 
+        ? [`全包未選號碼：精華 ${bCount} 膽拖 ${selectedLegs.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
+        : [`單式全覆蓋：因預算限制，為您挑選了包含未選號碼的組合，成本 $10。`],
+      type: isBanker ? 'banker' : 'standard',
+      isBankerLegs: isBanker,
+      bankersCount: isBanker ? bCount : 0
+    };
+
+    // 生成全新一頁
+    setGeneratedBets([newBet]);
+    setSpecialCoverBets([]);
+    setIsAiGenerated(false);
+    setIsCoverDialogOpen(false);
+    toast.success("成功生成並覆蓋未選號碼的配搭！", { id: "generate-cover" });
+    setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
+  };
+
   const handleGenerate = () => {
     setIsAiGenerated(false);
     if (enableRecent && recentMode === "" && !enableComplexRecent) {
@@ -332,6 +453,7 @@ export default function App() {
 
       setTimeout(() => {
         setGeneratedBets(bets);
+        setSpecialCoverBets([]);
         setUndoStack([]);
         setIsGenerating(false);
       }, 400); // Fake loading for better UX
@@ -593,6 +715,7 @@ export default function App() {
 
       setTimeout(() => {
         setGeneratedBets(allBets);
+        setSpecialCoverBets([]);
         setUndoStack([]);
         setIsGenerating(false);
       }, 400);
@@ -1457,6 +1580,7 @@ export default function App() {
               className="border-[3px] border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] sm:border-4 sm:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 sm:hover:translate-y-1 sm:hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:py-1.5 sm:px-3 text-xs sm:text-sm bg-orange-400 hover:bg-orange-500 text-black border-black/80"
               onClick={() => {
                 setGeneratedBets([]);
+                setSpecialCoverBets([]);
                 setUndoStack([]);
                 setBankers([]);
                 setAnalysisDrawIndex(null);
@@ -2366,7 +2490,6 @@ export default function App() {
                         </div>
                       )}
                     </div>
-
                   </div>
                 </div>
               </CardContent>
@@ -2445,12 +2568,14 @@ export default function App() {
             {generatedBets.length > 0 ? (
               <div className="space-y-1 sm:space-y-2">
                 <div className="flex flex-col gap-1 items-center justify-center w-full">
-                  <div className="bg-black text-[#FFD700] border-4 border-black py-1 px-3 sm:py-1.5 sm:px-4 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit mx-auto">
+                  <div className="bg-black text-[#FFD700] border-4 border-black py-1 px-3 sm:py-1.5 sm:px-4 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit mx-auto transition-transform hover:-translate-y-1">
                     <h2 className="text-lg sm:text-xl font-black flex items-center justify-center gap-1.5 sm:gap-2">
                       <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#FFD700] shrink-0" />
                       <span>成功生成 {generatedBets.length} 注號碼！ 🎉</span>
                     </h2>
                   </div>
+
+
                   
                   {(() => {
                     const allGeneratedNumbers = generatedBets.map(b => b.numbers).flat();
@@ -2639,12 +2764,13 @@ export default function App() {
                   })()}
 
                   <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center">
-                    <Button
+                      <Button
                       variant="outline"
                       size="sm"
                       className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#ffd8a8]"
                       onClick={() => {
                         setGeneratedBets([]);
+                        setSpecialCoverBets([]);
                         setUndoStack([]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -2658,6 +2784,7 @@ export default function App() {
                       className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#d2b48c]"
                       onClick={() => {
                         setGeneratedBets([]);
+                        setSpecialCoverBets([]);
                         setUndoStack([]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -2788,18 +2915,21 @@ export default function App() {
                         </div>
                       </DialogContent>
                     </Dialog>
-                    <Dialog>
-                      <DialogTrigger render={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#fca5a5] text-black"
-                        />
-                      }>
-                        <Smartphone className="w-3.5 h-3.5 mr-1" />
-                        自動點擊 HKJC (手機版)
-                      </DialogTrigger>
-                      <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                    <div className="flex w-full gap-1.5 sm:gap-2 mt-1 lg:mt-0 lg:w-auto lg:flex-none">
+                      <Dialog>
+                        <DialogTrigger render={
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-1.5 sm:px-3 bg-[#fca5a5] text-black min-w-0"
+                          />
+                        }>
+                            <span className="flex items-center justify-center truncate px-1">
+                              <Smartphone className="w-3.5 h-3.5 mr-1 shrink-0" />
+                              <span className="truncate text-xs sm:text-sm">自動按球(手機)</span>
+                            </span>
+                        </DialogTrigger>
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
                         <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 手機版自動點擊教學</DialogTitle>
@@ -2885,6 +3015,68 @@ export default function App() {
                         </div>
                       </DialogContent>
                     </Dialog>
+                    {(() => {
+                      const allGeneratedNumbers = [...generatedBets, ...specialCoverBets].map((b: any) => b.numbers).flat();
+                      const usedNums = new Set(allGeneratedNumbers);
+                      const unselectedCount = 49 - usedNums.size;
+
+                      if (unselectedCount === 0) return null;
+
+                      return (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-1.5 sm:px-3 bg-[#FFE867] hover:bg-[#FFD700] text-black min-w-0"
+                            onClick={() => setIsCoverDialogOpen(true)}
+                          >
+                            <span className="flex items-center justify-center truncate px-1">
+                              <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-600 shrink-0" />
+                              <span className="truncate text-[11px] sm:text-sm">全包剩餘 {unselectedCount} 號</span>
+                            </span>
+                          </Button>
+                          <Dialog open={isCoverDialogOpen} onOpenChange={setIsCoverDialogOpen}>
+                            <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] bg-[#f8fafc] text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2 flex flex-col">
+                              <DialogHeader className="bg-[#FFE867] border-b-4 border-black p-4 shrink-0">
+                                <DialogTitle className="text-lg sm:text-xl font-black flex items-center justify-center gap-2">
+                                  <Sparkles className="w-6 h-6 text-amber-600" />
+                                  自動生成拖膽策略 (節省成本)
+                                </DialogTitle>
+                              </DialogHeader>
+                              <div className="p-6 text-sm font-bold text-zinc-700 text-left leading-relaxed flex-1 space-y-6">
+                                <div className="font-black text-black text-[15px] sm:text-lg flex justify-between items-center bg-white p-3 sm:p-4 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                   <span>設定預算</span>
+                                   <span className="bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                     預算 ${coverBudget}
+                                   </span>
+                                </div>
+                                <p className="font-medium text-sm sm:text-base text-zinc-600 text-center px-2">
+                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼生成一注獨立「膽拖」配搭。若預算不足以包含所有號碼，將以符合預算的前提下「覆蓋最多號碼」。
+                                </p>
+                                <div className="pt-2 pb-6 px-4">
+                                  <Slider
+                                    min={40}
+                                    max={600}
+                                    step={10}
+                                    value={[coverBudget]}
+                                    onValueChange={(val) => setCoverBudget(Array.isArray(val) ? val[0] : (Number(val) || 100))}
+                                    className="cursor-pointer"
+                                  />
+                                </div>
+                                <Button
+                                   className="w-full bg-[#10b981] hover:bg-[#059669] text-black h-auto py-3.5 px-6 text-[17px] font-black border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2"
+                                   onClick={handleAddCoverUnselectedBet}
+                                >
+                                   <Sparkles className="w-5 h-5 text-white" />
+                                   開始智能生成獨立拖膽
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </>
+                      );
+                    })()}
+                    </div>
                   </div>
                 </div>
 
@@ -2945,16 +3137,16 @@ export default function App() {
                         </div>
                       </div>
                       
-                      <div className="text-[11px] sm:text-xs font-black text-black bg-[#FFE867] border-2 border-black rounded-lg sm:rounded-full px-2.5 py-1 sm:py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] mt-0.5 z-10 w-fit shrink-0">
-                        {(() => {
-                          const getCombCount = (n: number, k: number) => {
-                            if (k > n || k < 0) return 0;
-                            if (k === 0 || k === n) return 1;
-                            let c = 1;
-                            for (let i = 1; i <= k; i++) c = c * (n - i + 1) / i;
-                            return c;
-                          };
-                          if (bet.isBankerLegs && bet.bankersCount) {
+                      {bet.isBankerLegs && bet.bankersCount && (
+                        <div className="text-[11px] sm:text-xs font-black text-black bg-[#FFE867] border-2 border-black rounded-lg sm:rounded-full px-2.5 py-1 sm:py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] mt-0.5 z-10 w-fit shrink-0">
+                          {(() => {
+                            const getCombCount = (n: number, k: number) => {
+                              if (k > n || k < 0) return 0;
+                              if (k === 0 || k === n) return 1;
+                              let c = 1;
+                              for (let i = 1; i <= k; i++) c = c * (n - i + 1) / i;
+                              return c;
+                            };
                             const cost = getCombCount(bet.numbers.length - bet.bankersCount, 6 - bet.bankersCount) * 10;
                             return (
                               <div className="flex flex-col sm:flex-row items-center sm:gap-2 leading-tight">
@@ -2963,13 +3155,93 @@ export default function App() {
                                 <span>10元一注此拖膽成本：${cost}</span>
                               </div>
                             );
-                          }
-                          return `💰 每注成本：$10`;
-                        })()}
-                      </div>
+                          })()}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
+
+                {specialCoverBets.length > 0 && (
+                  <div className="mt-8 border-t-4 border-dashed border-black pt-6">
+                    <div className="flex items-center justify-center gap-2 mb-4">
+                      <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500" />
+                      <h3 className="text-xl sm:text-2xl font-black text-black">獨 立 補 漏 注 項</h3>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-2 sm:gap-4 w-full items-start">
+                      {specialCoverBets.map((bet, index) => (
+                        <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
+                          <div
+                            className="w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap z-0 relative cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                            onClick={() => setViewingBetExpl({ index: generatedBets.length + index, bet })}
+                          >
+                            <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border border-white translate-x-1/3 -translate-y-1/3 z-20 animate-pulse"></div>
+                            <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
+                              <div className="text-base sm:text-lg font-black text-[#FF4D4D] w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
+                                專屬
+                              </div>
+                              <div className="flex flex-nowrap gap-0 sm:gap-0.5 items-center py-0.5">
+                                {(() => {
+                                  const renderBall = (num: number, i: number) => {
+                                    const color = getBallColor(num);
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`
+                                          w-[38px] h-[38px] sm:w-[46px] sm:h-[46px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[22px] sm:text-[26px] leading-none pt-0.5 tracking-tighter border-[3px] border-black cursor-default
+                                          ${color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]"}
+                                        `}
+                                      >
+                                        {num}
+                                      </div>
+                                    );
+                                  };
+                                  
+                                  if (bet.isBankerLegs && bet.bankersCount) {
+                                    return (
+                                      <div className="flex items-center pr-1">
+                                        <div className="flex items-center gap-0.5 bg-yellow-100/50 p-0.5 rounded-full border-2 border-black/10">
+                                          {bet.numbers.slice(0, bet.bankersCount).map((num: number, i: number) => renderBall(num, i))}
+                                        </div>
+                                        <div className="flex items-center justify-center w-[22px] h-[22px] sm:w-6 sm:h-6 rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-xs border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 -ml-1 sm:-ml-2 -mr-1 sm:-mr-1.5 transform rotate-6">拖</div>
+                                        <div className="flex items-center gap-0.5">
+                                          {bet.numbers.slice(bet.bankersCount).map((num: number, i: number) => renderBall(num, i + bet.bankersCount!))}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return bet.numbers.map((num: number, i: number) => renderBall(num, i));
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {bet.isBankerLegs && bet.bankersCount && (
+                            <div className="text-[11px] sm:text-xs font-black text-black bg-[#FFE867] border-2 border-black rounded-lg sm:rounded-full px-2.5 py-1 sm:py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] mt-0.5 z-10 w-fit shrink-0">
+                              {(() => {
+                                const getCombCount = (n: number, k: number) => {
+                                  if (k > n || k < 0) return 0;
+                                  if (k === 0 || k === n) return 1;
+                                  let c = 1;
+                                  for (let i = 1; i <= k; i++) c = c * (n - i + 1) / i;
+                                  return c;
+                                };
+                                const cost = getCombCount(bet.numbers.length - bet.bankersCount, 6 - bet.bankersCount) * 10;
+                                return (
+                                  <div className="flex flex-col sm:flex-row items-center sm:gap-2 leading-tight">
+                                    <span>💰 5元一注此拖膽成本：${cost / 2}</span>
+                                    <span className="hidden sm:inline">|</span>
+                                    <span>10元一注此拖膽成本：${cost}</span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 sm:mt-6 bg-[#ffedd5] border-[3px] sm:border-4 border-black rounded-2xl p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-2xl mx-auto w-full text-center">
                   <h3 className="font-black text-lg mb-1 flex items-center justify-center gap-1.5 min-w-0"><Sparkles className="w-5 h-5 text-orange-500 shrink-0" /> 全部生成設定筆記</h3>
@@ -3848,9 +4120,9 @@ export default function App() {
                   </div>
                 </div>
                 
-                <div className="text-[13px] font-black text-black bg-[#FFE867] border-[3px] border-black rounded-xl sm:rounded-full px-3 py-1 sm:py-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] z-10 w-fit shrink-0">
-                  {(() => {
-                    if (bet.isBankerLegs && bet.bankersCount) {
+                {bet.isBankerLegs && bet.bankersCount && (
+                  <div className="text-[13px] font-black text-black bg-[#FFE867] border-[3px] border-black rounded-xl sm:rounded-full px-3 py-1 sm:py-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] z-10 w-fit shrink-0">
+                    {(() => {
                       const cost = getCombinationsCount(bet.numbers.length - bet.bankersCount, 6 - bet.bankersCount) * 10;
                       return (
                         <div className="flex flex-col sm:flex-row items-center sm:gap-2 leading-tight py-0.5 sm:py-0">
@@ -3859,10 +4131,9 @@ export default function App() {
                           <span>10元一注此拖膽成本：${cost}</span>
                         </div>
                       );
-                    }
-                    return `💰 每注成本：$10`;
-                  })()}
-                </div>
+                    })()}
+                  </div>
+                )}
               </div>
             ))}
           </div>
