@@ -3271,6 +3271,16 @@ export default function App() {
                         </div>
                         <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
                       </>
+                    ) : (generatedBets.length > 0 && generatedBets[0].id?.startsWith('unselected-cover-')) ? (
+                      <div className="w-full text-left bg-white border-2 border-black rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
+                        <div className="font-black text-black mb-2 flex items-center gap-1.5 text-base sm:text-lg">
+                          <Settings2 className="w-5 h-5 shrink-0" /> 
+                          全包剩餘號碼設定筆記：
+                        </div>
+                        <ul className="list-disc pl-5 sm:pl-6 space-y-1.5 text-sm sm:text-[15px] font-bold text-zinc-700">
+                          <li>此組合專為「全包剩餘號碼」策略所產生，此為獨立生成的膽拖/單式組合，以上記錄與當初自定的生成條件及其他篩選設定無關。</li>
+                        </ul>
+                      </div>
                     ) : (
                       <div className="w-full text-left bg-white border-2 border-black rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
                         <div className="font-black text-black mb-2 flex items-center gap-1.5 text-base sm:text-lg">
@@ -4165,6 +4175,16 @@ export default function App() {
                   {aiReasoning.map((reason, i) => (
                     <li key={i}>{reason}</li>
                   ))}
+                </ul>
+              </div>
+            ) : (generatedBets.length > 0 && generatedBets[0].id?.startsWith('unselected-cover-')) ? (
+              <div className="text-left bg-white border-[3px] border-black rounded-lg p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <div className="font-black text-black mb-3 flex items-center gap-1.5 text-lg">
+                  <Settings2 className="w-5 h-5 shrink-0" /> 
+                  全包剩餘號碼設定筆記：
+                </div>
+                <ul className="list-disc pl-6 space-y-2 text-base font-bold text-zinc-700">
+                  <li>此組合專為「全包剩餘號碼」策略所產生，此為獨立生成的膽拖/單式組合，以上記錄與當初自定的生成條件及其他篩選設定無關。</li>
                 </ul>
               </div>
             ) : (
