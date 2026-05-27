@@ -3500,9 +3500,9 @@ export default function App() {
 
                 <div className="flex flex-wrap justify-center gap-2 sm:gap-4 w-full items-start">
                   {generatedBets.map((bet, index) => (
-                    <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
+                    <div key={index} className={`flex flex-col items-center gap-1.5 ${bet.isBankerLegs ? 'w-full max-w-[600px]' : 'w-fit'}`}>
                       <div
-                        className={`w-fit max-w-[96vw] overflow-hidden border-[3px] border-black rounded-[24px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}
+                        className={`max-w-[96vw] overflow-hidden border-[3px] border-black rounded-[24px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''} ${bet.isBankerLegs ? 'w-full' : 'w-fit'}`}
                         onClick={() => isAiGenerated && setViewingBetExpl({ index, bet })}
                       >
                         <div className="flex items-center justify-start gap-1 sm:gap-2 min-h-[42px] sm:min-h-[50px] pr-1 pointer-events-none w-full">
@@ -4516,13 +4516,13 @@ export default function App() {
           </h1>
           <div className={`w-full ${generatedBets.length >= 13 ? 'grid grid-cols-3 gap-x-8 gap-y-7 justify-items-center' : generatedBets.length >= 11 ? 'grid grid-cols-2 gap-x-8 gap-y-7 justify-items-center' : 'flex flex-col gap-7 items-center'}`}>
             {generatedBets.map((bet, index) => (
-              <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
-                <div className="flex items-center w-fit mx-auto bg-white border-[4px] border-black rounded-3xl min-h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-3 relative overflow-visible h-auto max-w-[900px]">
+              <div key={index} className={`flex flex-col items-center gap-1.5 ${bet.isBankerLegs ? 'w-full max-w-[600px]' : 'w-fit'}`}>
+                <div className={`flex flex-col sm:flex-row items-center sm:items-stretch sm:justify-start w-full mx-auto bg-white border-[4px] border-black rounded-3xl min-h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-3 relative overflow-visible h-auto max-w-[900px] ${!bet.isBankerLegs && 'sm:w-fit'}`}>
                   <div className="flex items-center gap-3 w-full">
                     <div className="text-2xl font-black text-black w-10 text-center transform -rotate-[10deg] shrink-0 opacity-80">
                       #{index + 1}
                     </div>
-                    <div className="flex gap-1.5 items-center">
+                    <div className="flex gap-1.5 items-center w-full">
                       {(() => {
                         const renderBall = (num: number, i: number) => {
                           const color = getBallColor(num);
