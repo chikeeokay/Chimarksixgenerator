@@ -71,6 +71,23 @@ import {
   MARK_SIX_NUMBERS,
 } from "@/lib/marksix";
 
+function getCombinationsCount(n: number, k: number) {
+  if (k > n || k < 0) return 0;
+  if (k === 0 || k === n) return 1;
+  let c = 1;
+  for (let i = 1; i <= k; i++) c = c * (n - i + 1) / i;
+  return c;
+}
+
+function getCombos(arr: number[], k: number): number[][] {
+  if (k === 0) return [[]];
+  if (arr.length === 0) return [];
+  const [first, ...rest] = arr;
+  const combsWithoutFirst = getCombos(rest, k);
+  const combsWithFirst = getCombos(rest, k - 1).map(c => [first, ...c]);
+  return [...combsWithFirst, ...combsWithoutFirst];
+}
+
 const parseRanges = (input: string): {start: number, end: number}[] => {
   const ranges: {start: number, end: number}[] = [];
   if (!input.trim()) return ranges;
@@ -153,6 +170,8 @@ export default function App() {
   const [isAiGenerated, setIsAiGenerated] = useState(false);
   const [aiAnalysisDrawsUsed, setAiAnalysisDrawsUsed] = useState(50);
   const [aiReasoning, setAiReasoning] = useState<string[]>([]);
+  const [aiBankerMode, setAiBankerMode] = useState(false);
+  const [aiBankerBudget, setAiBankerBudget] = useState(100);
 
   useEffect(() => {
     setBankers([]);
@@ -431,9 +450,61 @@ export default function App() {
 
       let allBets: any[] = [];
 
-      for (let s = 0; s < 3; s++) {
-        let countForStrategy = counts[s];
-        if (countForStrategy <= 0) continue;
+      if (aiBankerMode && aiBetCount >= 10) {
+        let bestConfig = { bCount: 2, legsLength: 4, cost: 10 };
+        const configs: {bCount: number, legsLength: number, cost: number}[] = [];
+        for (let b = 1; b <= 4; b++) {
+          for (let l = 6 - b; l <= 20; l++) {
+            const cost = getCombinationsCount(l, 6 - b) * 10;
+            if (cost <= aiBankerBudget && cost >= 20) {
+              configs.push({ bCount: b, legsLength: l, cost });
+            }
+          }
+        }
+        if (configs.length > 0) {
+          configs.sort((a,b) => b.cost - a.cost);
+          const topConfigs = configs.filter(c => c.cost === configs[0].cost);
+          bestConfig = topConfigs[Math.floor(Math.random() * topConfigs.length)];
+        }
+        
+        setAiReasoning([
+          `啟動大數據拖膽模式：因注數較多，AI 已自動改為為您精研「膽拖」配搭，以貼近 $${aiBankerBudget} 預算極大化覆蓋號碼！`,
+          ...explanations,
+        ]);
+        
+        const rawBets = generateBets({
+          ...baseGenerateOptions,
+          complexRecentStrategy: { enabled: true, excludeRanges: [{ start: 1, end: 2 }], includeRanges: [] },
+          count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2),
+          aiStrategy: "balanced",
+        });
+        
+        const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort((a,b)=>a-b);
+        const targetTotal = bestConfig.bCount + bestConfig.legsLength;
+        const selectedNums = merged.slice(0, targetTotal);
+        while (selectedNums.length < targetTotal) {
+           const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
+           for (const n of nextRanked) {
+             if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
+               selectedNums.push(n);
+             }
+           }
+        }
+        selectedNums.sort(() => Math.random() - 0.5);
+        const bCount = bestConfig.bCount;
+        const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
+        const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
+        
+        allBets.push({
+          numbers: [...bankers, ...legs],
+          explanations: [`AI 智能膽拖配搭：精選 ${bankers.length}膽 ${legs.length}腳，結合冷熱分佈機制，成本 $${bestConfig.cost}，大幅提升覆蓋率！`],
+          isBankerLegs: true,
+          bankersCount: bankers.length
+        });
+      } else {
+        for (let s = 0; s < 3; s++) {
+          let countForStrategy = counts[s];
+          if (countForStrategy <= 0) continue;
         
         let comboBetCountForS = allocatedCombos[s];
         let normalBetCountForS = countForStrategy - comboBetCountForS;
@@ -517,6 +588,7 @@ export default function App() {
           }).map(bet => injectDynamicExplanations(bet, `使用「2合策略」${willUse3Combos ? '及「3合策略」' : ''}，自動尋找最高勝率的同伴號碼組合。`));
           allBets.push(...comboBets);
         }
+        }
       }
 
       setTimeout(() => {
@@ -552,7 +624,14 @@ export default function App() {
   const handleCopyBets = () => {
     if (generatedBets.length === 0) return;
     const text = generatedBets
-      .map((bet, index) => `注 ${index + 1}: ${bet.numbers.map((n) => n.toString()).join(", ")}`)
+      .map((bet, index) => {
+        if (bet.isBankerLegs && bet.bankersCount) {
+          const bankers = bet.numbers.slice(0, bet.bankersCount).join(", ");
+          const legs = bet.numbers.slice(bet.bankersCount).join(", ");
+          return `注 ${index + 1}: [膽] ${bankers} [腳] ${legs}`;
+        }
+        return `注 ${index + 1}: ${bet.numbers.map((n) => n.toString()).join(", ")}`;
+      })
       .join("\n");
     navigator.clipboard
       .writeText(text)
@@ -584,21 +663,46 @@ export default function App() {
 
   const handleManualCheck = () => {
     try {
-      // Remove common list prefixes line by line (e.g., "注 1:", "第1注", "1.", "bet 1:")
-      const cleanedInput = checkManualInput
-        .split('\n')
-        .map(line => line.replace(/^(?:\d+[\.\)\]]\s*|(?:注|bet|第)\s*\d+\s*(?:注)?\s*[:：\.]?\s*)/ig, ''))
-        .join(' ');
-
-      // Extract all valid numbers from 1 to 49
-      const allNums = (cleanedInput.match(/\d+/g) || [])
-        .map(n => parseInt(n, 10))
-        .filter(n => !isNaN(n) && n >= 1 && n <= 49);
-
       const parsedBets: number[][] = [];
-      // Group every 6 numbers into a single bet
-      for (let i = 0; i <= allNums.length - 6; i += 6) {
-        parsedBets.push(allNums.slice(i, i + 6));
+      const getCombos = (arr: number[], k: number): number[][] => {
+        if (k === 0) return [[]];
+        if (arr.length === 0) return [];
+        const [first, ...rest] = arr;
+        const combsWithoutFirst = getCombos(rest, k);
+        const combsWithFirst = getCombos(rest, k - 1).map(c => [first, ...c]);
+        return [...combsWithFirst, ...combsWithoutFirst];
+      };
+
+      let unparsedNumbers: number[] = [];
+
+      checkManualInput.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        const bankerMatch = trimmed.match(/\[膽\](.*?)\[腳\](.*)/);
+        if (bankerMatch) {
+          const bankers = Array.from(new Set((bankerMatch[1].match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= 49)));
+          const legs = Array.from(new Set((bankerMatch[2].match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= 49)));
+          
+          if (bankers.length > 0 && legs.length > 0 && bankers.length + legs.length >= 6) {
+             const requiredLegs = 6 - bankers.length;
+             if (requiredLegs > 0) {
+               getCombos(legs, requiredLegs).forEach(c => parsedBets.push([...bankers, ...c].sort((a,b)=>a-b)));
+             } else if (requiredLegs === 0) {
+               parsedBets.push([...bankers].sort((a,b)=>a-b));
+             }
+          }
+          return;
+        }
+
+        // Standard line processing
+        const cleanedLine = trimmed.replace(/^(?:\d+[\.\)\]]\s*|(?:注|bet|第)\s*\d+\s*(?:注)?\s*[:：\.]?\s*)/ig, '');
+        const nums = (cleanedLine.match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 49);
+        unparsedNumbers.push(...nums);
+      });
+
+      for (let i = 0; i <= unparsedNumbers.length - 6; i += 6) {
+        parsedBets.push(unparsedNumbers.slice(i, i + 6));
       }
 
       if (parsedBets.length === 0) {
@@ -1034,7 +1138,30 @@ export default function App() {
       </head>
       <body>
         <h3>您的幸運號碼</h3>
-        ${generatedBets.map((bet, i) => `
+        ${generatedBets.map((bet, i) => {
+          if (bet.isBankerLegs && bet.bankersCount) {
+            const htmlBankers = bet.numbers.slice(0, bet.bankersCount).map(n => {
+              const color = getBallColor(n);
+              const colorClass = color === 'red' ? 'red' : color === 'blue' ? 'blue' : 'green';
+              return `<div class="ball ${colorClass}">${n}</div>`;
+            }).join('');
+            const htmlLegs = bet.numbers.slice(bet.bankersCount).map(n => {
+              const color = getBallColor(n);
+              const colorClass = color === 'red' ? 'red' : color === 'blue' ? 'blue' : 'green';
+              return `<div class="ball ${colorClass}">${n}</div>`;
+            }).join('');
+            return `
+              <div class="bet">
+                <div class="index">#${i + 1}</div>
+                <div class="balls" style="align-items: center;">
+                  <div style="display:flex;gap:4px;padding:2px;background:rgba(255,235,59,0.3);border-radius:20px;">${htmlBankers}</div>
+                  <div style="font-size:10px;font-weight:900;background:#000;color:#FFE867;padding:1px 3px;border-radius:4px;border:1px solid #fff;transform:rotate(6deg);">拖</div>
+                  ${htmlLegs}
+                </div>
+              </div>
+            `;
+          }
+          return `
           <div class="bet">
             <div class="index">#${i + 1}</div>
             <div class="balls">
@@ -1045,7 +1172,7 @@ export default function App() {
               }).join('')}
             </div>
           </div>
-        `).join('')}
+        `}).join('')}
       </body>
       </html>
     `;
@@ -2761,57 +2888,84 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap justify-center gap-2 sm:gap-4 w-full">
+                <div className="flex flex-wrap justify-center gap-2 sm:gap-4 w-full items-start">
                   {generatedBets.map((bet, index) => (
-                    <div
-                      key={index}
-                      className={`w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}
-                      onClick={() => isAiGenerated && setViewingBetExpl({ index, bet })}
-                    >
-                      <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
-                        <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
-                          #{index + 1}
+                    <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
+                      <div
+                        className={`w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}
+                        onClick={() => isAiGenerated && setViewingBetExpl({ index, bet })}
+                      >
+                        <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
+                          <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
+                            #{index + 1}
+                          </div>
+                          <div className="flex flex-nowrap gap-0 sm:gap-0.5 items-center py-0.5">
+                            {(() => {
+                              const renderBall = (num: number, i: number) => {
+                                const color = getBallColor(num);
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`
+                                      w-[38px] h-[38px] sm:w-[46px] sm:h-[46px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[22px] sm:text-[26px] leading-none pt-0.5 tracking-tighter border-[3px] border-black cursor-default
+                                      ${color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]"}
+                                    `}
+                                  >
+                                    {num}
+                                  </div>
+                                );
+                              };
+                              
+                              if (bet.isBankerLegs && bet.bankersCount) {
+                                return (
+                                  <div className="flex items-center pr-1">
+                                    <div className="flex items-center gap-0.5 bg-yellow-100/50 p-0.5 rounded-full border-2 border-black/10">
+                                      {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
+                                    </div>
+                                    <div className="flex items-center justify-center w-[22px] h-[22px] sm:w-6 sm:h-6 rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-xs border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 -ml-1 sm:-ml-2 -mr-1 sm:-mr-1.5 transform rotate-6">拖</div>
+                                    <div className="flex items-center gap-0.5">
+                                      {bet.numbers.slice(bet.bankersCount).map((num, i) => renderBall(num, i + bet.bankersCount!))}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return bet.numbers.map((num, i) => renderBall(num, i));
+                            })()}
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUndoStack(prev => [...prev, { index, bet: generatedBets[index] }]);
+                              setGeneratedBets(prev => prev.filter((_, i) => i !== index));
+                            }}
+                            className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] shrink-0 rounded-full flex items-center justify-center bg-zinc-200 hover:bg-red-400 text-black border-2 border-black ml-1 mr-1 transition-colors hover:scale-105 pointer-events-auto"
+                          >
+                            <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </button>
                         </div>
-                        <div className="flex flex-nowrap gap-0 sm:gap-0.5">
-                          {bet.numbers.map((num, i) => {
-                            const color = getBallColor(num);
+                      </div>
+                      
+                      <div className="text-[11px] sm:text-xs font-black text-black bg-[#FFE867] border-2 border-black rounded-lg sm:rounded-full px-2.5 py-1 sm:py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] mt-0.5 z-10 w-fit shrink-0">
+                        {(() => {
+                          const getCombCount = (n: number, k: number) => {
+                            if (k > n || k < 0) return 0;
+                            if (k === 0 || k === n) return 1;
+                            let c = 1;
+                            for (let i = 1; i <= k; i++) c = c * (n - i + 1) / i;
+                            return c;
+                          };
+                          if (bet.isBankerLegs && bet.bankersCount) {
+                            const cost = getCombCount(bet.numbers.length - bet.bankersCount, 6 - bet.bankersCount) * 10;
                             return (
-                              <div
-                                key={i}
-                                className={`
-                                  w-[38px] h-[38px] sm:w-[46px] sm:h-[46px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[22px] sm:text-[26px] leading-none pt-0.5 tracking-tighter border-[3px] border-black cursor-default
-                                  ${
-                                    color === "red"
-                                      ? "bg-[#FF9999]"
-                                      : ""
-                                  }
-                                  ${
-                                    color === "blue"
-                                      ? "bg-[#99CCFF]"
-                                      : ""
-                                  }
-                                  ${
-                                    color === "green"
-                                      ? "bg-[#99FF99]"
-                                      : ""
-                                  }
-                                `}
-                              >
-                                {num}
+                              <div className="flex flex-col sm:flex-row items-center sm:gap-2 leading-tight">
+                                <span>💰 5元一注此拖膽成本：${cost / 2}</span>
+                                <span className="hidden sm:inline">|</span>
+                                <span>10元一注此拖膽成本：${cost}</span>
                               </div>
                             );
-                          })}
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setUndoStack(prev => [...prev, { index, bet: generatedBets[index] }]);
-                            setGeneratedBets(prev => prev.filter((_, i) => i !== index));
-                          }}
-                          className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] shrink-0 rounded-full flex items-center justify-center bg-zinc-200 hover:bg-red-400 text-black border-2 border-black ml-1 mr-1 transition-colors hover:scale-105 pointer-events-auto"
-                        >
-                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
+                          }
+                          return `💰 每注成本：$10`;
+                        })()}
                       </div>
                     </div>
                   ))}
@@ -3266,25 +3420,38 @@ export default function App() {
                     const minNum = Math.min(...winningNums);
                     const maxNum = Math.max(...winningNums);
 
-                    const past5Draws = liveResults.slice(analysisDrawIndex + 1, analysisDrawIndex + 1 + 5);
-                    const past5Nums = new Set(past5Draws.flatMap(d => getRawDrawNumbers(d).slice(0, 6)));
-                    const recentMatches5 = winningNums.filter(n => past5Nums.has(n)).length;
+                    const getFreqStats = (drawsCount: number, hotThreshold: number, warmThreshold: number = 1) => {
+                      const pastDraws = liveResults.slice(analysisDrawIndex + 1, analysisDrawIndex + 1 + drawsCount);
+                      const allPastNums = pastDraws.flatMap(d => getRawDrawNumbers(d));
+                      const freqMap = new Map<number, number>();
+                      allPastNums.forEach(n => freqMap.set(n, (freqMap.get(n) || 0) + 1));
+                      
+                      let hot = 0, warm = 0, cold = 0;
+                      const hotNums: number[] = [];
+                      const warmNums: number[] = [];
+                      const coldNums: number[] = [];
+                      winningNums.forEach(n => {
+                        const f = freqMap.get(n) || 0;
+                        if (f >= hotThreshold) { hot++; hotNums.push(n); }
+                        else if (f >= warmThreshold) { warm++; warmNums.push(n); }
+                        else { cold++; coldNums.push(n); }
+                      });
+                      return { hot, warm, cold, hotNums, warmNums, coldNums };
+                    };
 
-                    const past10Draws = liveResults.slice(analysisDrawIndex + 1, analysisDrawIndex + 1 + 10);
-                    const past10Nums = new Set(past10Draws.flatMap(d => getRawDrawNumbers(d).slice(0, 6)));
-                    const recentMatches10 = winningNums.filter(n => past10Nums.has(n)).length;
+                    const stats5 = getFreqStats(5, 2);
+                    const stats10 = getFreqStats(10, 2);
+                    const stats20 = getFreqStats(20, 4);
 
                     let recentStrategySuggestion = "";
-                    if (recentMatches5 >= 4) {
-                       recentStrategySuggestion = `極端熱門！適合採用「只買近 5 期號碼」策略。`;
-                    } else if (recentMatches5 >= 3) {
-                       recentStrategySuggestion = `偏向熱門，適合採用「只買近 5 期或 10 期號碼」策略。`;
-                    } else if (recentMatches5 === 0) {
-                       recentStrategySuggestion = `完全避開極熱門號碼！適合採用「排除近 5 期號碼」策略。`;
-                    } else if (recentMatches10 <= 1) {
-                       recentStrategySuggestion = `極端冷門！適合採用「排除近 10 期號碼」策略。`;
+                    if (stats10.hot >= 3) {
+                       recentStrategySuggestion = `熱門號碼強勢當道！建議採用「追熱」策略。`;
+                    } else if (stats10.cold >= 3) {
+                       recentStrategySuggestion = `大爆冷門！建議考慮部分「守冷」或全選未開出號碼。`;
+                    } else if (stats10.warm >= 4) {
+                       recentStrategySuggestion = `溫號居多，建議採用「溫和守中」策略。`;
                     } else {
-                       recentStrategySuggestion = `冷熱號碼分佈平均，建議結合「大數據」2合及3合策略。`;
+                       recentStrategySuggestion = `冷熱號碼分佈平均，建議結合「大數據」號碼分析。`;
                     }
 
                     const oddCount = winningNums.filter(n => n % 2 !== 0).length;
@@ -3377,10 +3544,58 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                <div className="flex bg-white border-2 border-black rounded-lg p-3 flex-col items-start gap-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-                                  <div className="flex items-center gap-3">
-                                    <div className="bg-yellow-200 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-yellow-900">近期冷熱</div>
-                                    <div className="text-sm">近 5 期重出 <span className="text-[#3b82f6] font-normal text-base">{recentMatches5}</span> 號 / 近 10 期重出 <span className="text-[#3b82f6] font-normal text-base">{recentMatches10}</span> 號</div>
+                                <div className="flex bg-white border-2 border-black rounded-lg p-3 flex-col items-start gap-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-3 w-full">
+                                    <div className="bg-yellow-200 border-2 border-black rounded-full px-2.5 py-0.5 font-normal text-[11px] shrink-0 text-yellow-900 whitespace-nowrap text-center mt-0.5 sm:mb-auto">近期冷熱</div>
+                                    <div className="flex flex-col gap-2 w-full text-[13px]">
+                                      <div className="flex flex-col w-full bg-zinc-50 px-2 py-1.5 rounded border border-black max-w-full">
+                                        <div className="flex items-center gap-1.5 w-full">
+                                          <span className="font-bold text-zinc-600 min-w-[40px]">近 5 期</span>
+                                          <div className="flex gap-2 font-mono ml-auto">
+                                            <span className="w-[32px] text-right"><span className="text-red-500 font-bold">{stats5.hot}</span> 熱</span>
+                                            <span className="w-[32px] text-right"><span className="text-orange-500 font-bold">{stats5.warm}</span> 溫</span>
+                                            <span className="w-[32px] text-right"><span className="text-blue-500 font-bold">{stats5.cold}</span> 冷</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 text-[11px] mt-1 pr-2 pt-0.5 border-t border-zinc-200">
+                                          {stats5.hot > 0 && <span className="text-red-600">熱: {stats5.hotNums.join(', ')}</span>}
+                                          {stats5.warm > 0 && <span className="text-orange-600">溫: {stats5.warmNums.join(', ')}</span>}
+                                          {stats5.cold > 0 && <span className="text-blue-600">冷: {stats5.coldNums.join(', ')}</span>}
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="flex flex-col w-full bg-zinc-50 px-2 py-1.5 rounded border border-black max-w-full">
+                                        <div className="flex items-center gap-1.5 w-full">
+                                          <span className="font-bold text-zinc-600 min-w-[44px]">近 10 期</span>
+                                          <div className="flex gap-2 font-mono ml-auto">
+                                            <span className="w-[32px] text-right"><span className="text-red-500 font-bold">{stats10.hot}</span> 熱</span>
+                                            <span className="w-[32px] text-right"><span className="text-orange-500 font-bold">{stats10.warm}</span> 溫</span>
+                                            <span className="w-[32px] text-right"><span className="text-blue-500 font-bold">{stats10.cold}</span> 冷</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 text-[11px] mt-1 pr-2 pt-0.5 border-t border-zinc-200">
+                                          {stats10.hot > 0 && <span className="text-red-600">熱: {stats10.hotNums.join(', ')}</span>}
+                                          {stats10.warm > 0 && <span className="text-orange-600">溫: {stats10.warmNums.join(', ')}</span>}
+                                          {stats10.cold > 0 && <span className="text-blue-600">冷: {stats10.coldNums.join(', ')}</span>}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col w-full bg-zinc-50 px-2 py-1.5 rounded border border-black max-w-full">
+                                        <div className="flex items-center gap-1.5 w-full">
+                                          <span className="font-bold text-zinc-600 min-w-[44px]">近 20 期</span>
+                                          <div className="flex gap-2 font-mono ml-auto">
+                                            <span className="w-[32px] text-right"><span className="text-red-500 font-bold">{stats20.hot}</span> 熱</span>
+                                            <span className="w-[32px] text-right"><span className="text-orange-500 font-bold">{stats20.warm}</span> 溫</span>
+                                            <span className="w-[32px] text-right"><span className="text-blue-500 font-bold">{stats20.cold}</span> 冷</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 text-[11px] mt-1 pr-2 pt-0.5 border-t border-zinc-200">
+                                          {stats20.hot > 0 && <span className="text-red-600">熱: {stats20.hotNums.join(', ')}</span>}
+                                          {stats20.warm > 0 && <span className="text-orange-600">溫: {stats20.warmNums.join(', ')}</span>}
+                                          {stats20.cold > 0 && <span className="text-blue-600">冷: {stats20.coldNums.join(', ')}</span>}
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
 
@@ -3545,15 +3760,33 @@ export default function App() {
             </div>
             
             <div className="mt-4 border-t-2 border-black border-dashed pt-4 flex gap-1.5 justify-center flex-wrap max-w-full">
-              {viewingBetExpl?.bet?.numbers?.map(n => {
-                const color = getBallColor(n);
-                const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
-                return (
-                  <div key={n} className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border-[2.5px] border-black flex items-center justify-center font-black text-base sm:text-lg text-black ${bgColor} shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]`}>
-                    {n}
-                  </div>
-                );
-              })}
+              {(() => {
+                const bet = viewingBetExpl?.bet;
+                if (!bet) return null;
+                const renderBall = (n: number) => {
+                  const color = getBallColor(n);
+                  const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                  return (
+                    <div key={n} className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border-[2.5px] border-black flex items-center justify-center font-black text-base sm:text-lg text-black ${bgColor} shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]`}>
+                      {n}
+                    </div>
+                  );
+                };
+                if (bet.isBankerLegs && bet.bankersCount) {
+                  return (
+                    <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-center">
+                      <div className="flex items-center gap-0.5 bg-yellow-100/50 p-1 rounded-full border-2 border-black/10">
+                        {bet.numbers.slice(0, bet.bankersCount).map(n => renderBall(n))}
+                      </div>
+                      <div className="flex items-center justify-center w-[24px] h-[24px] sm:w-[28px] sm:h-[28px] rounded-full bg-black text-[#FFE867] font-black text-[11px] sm:text-[13px] border-[2px] border-white shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 transform rotate-6 mx-0.5">拖</div>
+                      <div className="flex items-center gap-0.5 flex-wrap justify-center">
+                        {bet.numbers.slice(bet.bankersCount).map(n => renderBall(n))}
+                      </div>
+                    </div>
+                  );
+                }
+                return bet.numbers.map(n => renderBall(n));
+              })()}
             </div>
           </div>
           <DialogFooter className="p-4 bg-white border-t-4 border-black flex flex-col items-center justify-center">
@@ -3573,27 +3806,62 @@ export default function App() {
           <h1 className="text-[40px] font-black tracking-widest mb-6 text-[#FFE867] leading-none">
             您的幸運號碼
           </h1>
-          <div className={`w-full ${generatedBets.length >= 13 ? 'grid grid-cols-3 gap-x-8 gap-y-5 justify-items-center' : generatedBets.length >= 11 ? 'grid grid-cols-2 gap-x-8 gap-y-5 justify-items-center' : 'flex flex-col gap-5 items-center'}`}>
+          <div className={`w-full ${generatedBets.length >= 13 ? 'grid grid-cols-3 gap-x-8 gap-y-7 justify-items-center' : generatedBets.length >= 11 ? 'grid grid-cols-2 gap-x-8 gap-y-7 justify-items-center' : 'flex flex-col gap-7 items-center'}`}>
             {generatedBets.map((bet, index) => (
-              <div key={index} className="flex items-center w-fit mx-auto bg-white border-[4px] border-black rounded-3xl h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-5 py-2 relative overflow-visible">
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl font-black text-black w-10 text-center transform -rotate-[10deg] shrink-0 opacity-80">
-                    #{index + 1}
+              <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
+                <div className="flex items-center w-fit mx-auto bg-white border-[4px] border-black rounded-3xl h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-2 relative overflow-visible">
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl font-black text-black w-10 text-center transform -rotate-[10deg] shrink-0 opacity-80">
+                      #{index + 1}
+                    </div>
+                    <div className="flex gap-1.5 items-center">
+                      {(() => {
+                        const renderBall = (num: number, i: number) => {
+                          const color = getBallColor(num);
+                          const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                          return (
+                            <div
+                              key={i}
+                              className={`w-[42px] h-[42px] sm:w-[48px] sm:h-[48px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[24px] sm:text-[28px] leading-none tracking-tighter pt-0.5 border-[3px] border-black ${bgColor}`}
+                            >
+                              {num}
+                            </div>
+                          );
+                        };
+
+                        if (bet.isBankerLegs && bet.bankersCount) {
+                          return (
+                            <div className="flex items-center pr-1">
+                              <div className="flex items-center gap-1 bg-yellow-100/50 p-1 rounded-full border-2 border-black/10">
+                                {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
+                              </div>
+                              <div className="flex items-center justify-center w-[28px] h-[28px] rounded-full bg-black text-[#FFE867] font-black text-[13px] border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 mx-1 transform rotate-6">拖</div>
+                              <div className="flex items-center gap-1">
+                                {bet.numbers.slice(bet.bankersCount).map((num, i) => renderBall(num, i + bet.bankersCount!))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return bet.numbers.map((num, i) => renderBall(num, i));
+                      })()}
+                    </div>
                   </div>
-                  <div className="flex gap-2.5">
-                    {bet.numbers.map((num, i) => {
-                      const color = getBallColor(num);
-                      const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                </div>
+                
+                <div className="text-[13px] font-black text-black bg-[#FFE867] border-[3px] border-black rounded-xl sm:rounded-full px-3 py-1 sm:py-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] z-10 w-fit shrink-0">
+                  {(() => {
+                    if (bet.isBankerLegs && bet.bankersCount) {
+                      const cost = getCombinationsCount(bet.numbers.length - bet.bankersCount, 6 - bet.bankersCount) * 10;
                       return (
-                        <div
-                          key={i}
-                          className={`w-[42px] h-[42px] sm:w-[48px] sm:h-[48px] shrink-0 rounded-full flex items-center justify-center text-black font-black text-[24px] sm:text-[28px] leading-none tracking-tighter pt-0.5 border-[3px] border-black ${bgColor}`}
-                        >
-                          {num}
+                        <div className="flex flex-col sm:flex-row items-center sm:gap-2 leading-tight py-0.5 sm:py-0">
+                          <span>💰 5元一注此拖膽成本：${cost / 2}</span>
+                          <span className="hidden sm:inline">|</span>
+                          <span>10元一注此拖膽成本：${cost}</span>
                         </div>
                       );
-                    })}
-                  </div>
+                    }
+                    return `💰 每注成本：$10`;
+                  })()}
                 </div>
               </div>
             ))}
@@ -3683,7 +3951,16 @@ export default function App() {
           </div>
 
           <div className="mt-8 mb-4 p-4 bg-white rounded-2xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center">
-            <QRCodeSVG value={JSON.stringify(generatedBets.map(b => b.numbers))} size={160} />
+            <QRCodeSVG value={JSON.stringify(generatedBets.flatMap(b => {
+              if (b.isBankerLegs && b.bankersCount) {
+                const bankers = b.numbers.slice(0, b.bankersCount);
+                const legs = b.numbers.slice(b.bankersCount);
+                const requiredLegs = 6 - bankers.length;
+                if (requiredLegs > 0) return getCombos(legs, requiredLegs).map(c => [...bankers, ...c].sort((x,y)=>x-y));
+                if (requiredLegs === 0) return [[...bankers].sort((x,y)=>x-y)];
+              }
+              return [b.numbers];
+            }))} size={160} />
             <div className="mt-3 text-sm font-black text-black">快速對獎・SCAN ME</div>
           </div>
           <div className="mb-2 text-[#FFE867] text-[15px] font-bold tracking-widest">
@@ -3753,6 +4030,39 @@ export default function App() {
                   </div>
                   <span className="text-xs font-bold text-zinc-500">30注</span>
                 </div>
+                {aiBetCount >= 10 && (
+                  <div className="pt-4 border-t-2 border-black border-dashed">
+                    <div className="flex justify-between items-center mb-1">
+                      <div 
+                        className="font-bold text-black text-[15px] sm:text-base flex items-center gap-2 cursor-pointer"
+                        onClick={() => setAiBankerMode(!aiBankerMode)}
+                      >
+                        <div className={`w-6 h-6 rounded flex items-center justify-center border-2 border-black shrink-0 transition-colors ${aiBankerMode ? 'bg-[#FFD700]' : 'bg-white'}`}>
+                           {aiBankerMode && <Check className="w-4 h-4 text-black" strokeWidth={4} />}
+                        </div>
+                        自動生成拖膽策略 (節省成本)
+                      </div>
+                      {aiBankerMode && (
+                        <div className="font-black text-[15px] sm:text-lg text-black bg-[#FFD700] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] shrink-0 whitespace-nowrap min-w-[5rem] text-center">
+                          預算 ${aiBankerBudget}
+                        </div>
+                      )}
+                    </div>
+                    <span className="font-normal text-xs sm:text-[13px] text-zinc-600 pl-8 flex block leading-tight mb-4">當注數大於10注時，由 AI 改為生成一注「膽拖」配搭，以符合預算覆蓋最多號碼。</span>
+                    {aiBankerMode && (
+                      <div className="pl-6 pt-1 pb-2">
+                        <Slider
+                          min={40}
+                          max={300}
+                          step={10}
+                          value={[aiBankerBudget]}
+                          onValueChange={(val) => setAiBankerBudget(Array.isArray(val) ? val[0] : val)}
+                          className="py-1 sm:py-2 cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

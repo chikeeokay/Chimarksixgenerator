@@ -55,6 +55,8 @@ export interface GenerateOptions {
 export interface GeneratedBet {
   numbers: number[];
   explanations: string[];
+  isBankerLegs?: boolean;
+  bankersCount?: number;
 }
 
 export class PartialGenerationError extends Error {
