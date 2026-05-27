@@ -1480,9 +1480,9 @@ export default function App() {
             el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
             el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
           }
-          if(window.TouchEvent){
-            el.dispatchEvent(new TouchEvent('touchstart', {bubbles: true, touches: [{clientX: cx, clientY: cy}]}));
-            el.dispatchEvent(new TouchEvent('touchend', {bubbles: true, changedTouches: [{clientX: cx, clientY: cy}]}));
+          if(window.PointerEvent){
+            el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
 
@@ -1553,13 +1553,27 @@ export default function App() {
           await sleep(1500);
           
           let clickedAdd = false;
-          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項']";
+          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
           const exactEls = document.evaluate(exactXp, document, null, 7, null);
-          for(let i=0; i<exactEls.snapshotLength; i++){
+          for(let i=exactEls.snapshotLength - 1; i>=0; i--){
             const el = exactEls.snapshotItem(i);
             const rect = el.getBoundingClientRect();
             if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
-              triggerClick(el); clickedAdd = true; break; 
+              triggerClick(el); 
+              clickedAdd = true; 
+              break; 
+            }
+          }
+          
+          if(!clickedAdd) {
+            const fallbackXp = "//*[contains(text(), '添加到投注區') or contains(text(), '加入注項')]";
+            const fallbackEls = document.evaluate(fallbackXp, document, null, 7, null);
+            for(let i=fallbackEls.snapshotLength - 1; i>=0; i--){
+              const el = fallbackEls.snapshotItem(i);
+              const rect = el.getBoundingClientRect();
+              if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+                triggerClick(el); clickedAdd = true; break; 
+              }
             }
           }
           
@@ -4566,9 +4580,9 @@ export default function App() {
                       const cost = getCombinationsCount(bet.numbers.length - bet.bankersCount, 6 - bet.bankersCount) * 10;
                       return (
                         <div className="flex flex-col sm:flex-row items-center sm:gap-2 leading-tight py-0.5 sm:py-0">
-                          <span>💰 5元一注此拖膽成本：${cost / 2}</span>
+                          <span style={{ marginRight: '-14px' }}>💰 5元一注此拖膽成本：${cost / 2}</span>
                           <span className="hidden sm:inline">|</span>
-                          <span>10元一注此拖膽成本：${cost}</span>
+                          <span style={{ marginLeft: '-1px' }}>10元一注此拖膽成本：${cost}</span>
                         </div>
                       );
                     })()}
