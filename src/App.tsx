@@ -400,9 +400,8 @@ export default function App() {
     setSpecialCoverBets([]);
     setIsAiGenerated(false);
     setIsCoverDialogOpen(false);
-    toast.success("成功生成並覆蓋未選號碼的配搭！", { id: "generate-cover" });
     setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
@@ -458,6 +457,9 @@ export default function App() {
         setSpecialCoverBets([]);
         setUndoStack([]);
         setIsGenerating(false);
+        setTimeout(() => {
+          document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       }, 400); // Fake loading for better UX
     } catch (error: any) {
       if (error.name === "PartialGenerationError") {
@@ -720,6 +722,9 @@ export default function App() {
         setSpecialCoverBets([]);
         setUndoStack([]);
         setIsGenerating(false);
+        setTimeout(() => {
+          document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       }, 400);
 
     } catch(error: any) {
@@ -1325,6 +1330,245 @@ export default function App() {
       popup.document.close();
     } else {
       toast.error("無法開啟小視窗，請允許瀏覽器彈出視窗。");
+    }
+  };
+
+  const getBankerBookmarkletCode = (isDesktop: boolean = false) => {
+    const bankerBets = generatedBets.filter(b => b.isBankerLegs && (b.bankersCount || 0) > 0);
+    const convertedBets = bankerBets.map(b => ({
+      bankers: b.numbers.slice(0, b.bankersCount!),
+      legs: b.numbers.slice(b.bankersCount!)
+    }));
+    const betsJson = JSON.stringify(convertedBets);
+    
+    if (isDesktop) {
+      const script = `(async function(){
+        const bets = ${betsJson};
+        if (!bets || bets.length === 0) { alert("沒有生成拖膽號碼！"); return; }
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const getFrames = (win) => {
+          let res = [];
+          try { if(win.document) res.push({w: win, d: win.document}); } catch(e){}
+          try {
+            for(let i=0; i<win.frames.length; i++){
+              res = res.concat(getFrames(win.frames[i]));
+            }
+          } catch(e){}
+          return res;
+        };
+        const triggerClick = (el, win) => {
+          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          const rect = el.getBoundingClientRect();
+          const cx = Math.round(rect.left + rect.width / 2);
+          const cy = Math.round(rect.top + rect.height / 2);
+          el.click();
+          if(win.MouseEvent){
+            el.dispatchEvent(new win.MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new win.MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
+          }
+          if(win.PointerEvent){
+            el.dispatchEvent(new win.PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
+          }
+        };
+
+        let count = 0;
+        for(const bet of bets){
+          for (const section of ['bankers', 'legs']) {
+            const arr = bet[section];
+            if (!arr || arr.length === 0) continue;
+            
+            const framesTabs = getFrames(window);
+            for(let {w, d} of framesTabs) {
+              try {
+                const xps = section === 'bankers' 
+                  ? ["//*[normalize-space(text())='膽']", "//*[normalize-space(text())='Bankers']", "//*[normalize-space(text())='Banker']"] 
+                  : ["//*[normalize-space(text())='配腳']", "//*[normalize-space(text())='Legs']"];
+                  
+                for (let xp of xps) {
+                  const els = d.evaluate(xp, d, null, 7, null);
+                  for(let i=0; i<els.snapshotLength; i++){
+                    const el = els.snapshotItem(i);
+                    const isTray = el.closest && (el.closest('.selected-numbers') || el.closest('.infoList_cart_oW2U7') || el.closest('[id*="selected"]'));
+                    if (!isTray && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                      triggerClick(el, w);
+                    }
+                  }
+                }
+              } catch(e){}
+            }
+            await sleep(500);
+
+            for(const num of arr){
+              const str = num.toString();
+              const pad = num < 10 ? '0'+num : str;
+              let clicked = false;
+              const frames = getFrames(window);
+              for(let {w, d} of frames) {
+                  try {
+                      const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
+                      const els = d.evaluate(xp, d, null, 7, null);
+                      let validEls = [];
+                      for(let i=0; i<els.snapshotLength; i++){
+                        const el = els.snapshotItem(i);
+                        const rect = el.getBoundingClientRect();
+                        if(rect.width > 0 && rect.height > 0){
+                          let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
+                          if (isSelectedTray) continue;
+                          let hasChildrenText = false;
+                          for(let c of el.children) {
+                            if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                              hasChildrenText = true;
+                            }
+                          }
+                          if (hasChildrenText) continue;
+                          if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                              if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                                validEls.push(el);
+                              }
+                          }
+                        }
+                      }
+                      if(validEls.length > 0){ 
+                        const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                        triggerClick(targetEl, w); 
+                        clicked = true;
+                        break; 
+                      }
+                  } catch(e){}
+              }
+              if (!clicked) console.log("找不到號碼: " + str);
+              await sleep(600);
+            }
+          }
+          await sleep(1500);
+          
+          let clickedAdd = false;
+          const frames2 = getFrames(window);
+          for(let {w, d} of frames2) {
+              try {
+                const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項']";
+                const exactEls = d.evaluate(exactXp, d, null, 7, null);
+                for(let i=0; i<exactEls.snapshotLength; i++){
+                  const el = exactEls.snapshotItem(i);
+                  const rect = el.getBoundingClientRect();
+                  if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+                    triggerClick(el, w); clickedAdd = true; break; 
+                  }
+                }
+                if(clickedAdd) break;
+              } catch(e){}
+          }
+          if(clickedAdd) count++;
+          await sleep(4000);
+        }
+        alert("拖膽腳本點擊完成！共輸入 " + count + " 注。請核對投注區內容。");
+      })();`;
+      return `javascript:${encodeURIComponent(script)}`;
+    } else {
+      const script = `(async function(){
+        const bets = ${betsJson};
+        if (!bets || bets.length === 0) { alert("沒有生成拖膽號碼！"); return; }
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const triggerClick = (el) => {
+          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          const rect = el.getBoundingClientRect();
+          const cx = Math.round(rect.left + rect.width / 2);
+          const cy = Math.round(rect.top + rect.height / 2);
+          el.click();
+          if(window.MouseEvent){
+            el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
+          }
+          if(window.TouchEvent){
+            el.dispatchEvent(new TouchEvent('touchstart', {bubbles: true, touches: [{clientX: cx, clientY: cy}]}));
+            el.dispatchEvent(new TouchEvent('touchend', {bubbles: true, changedTouches: [{clientX: cx, clientY: cy}]}));
+          }
+        };
+
+        let count = 0;
+        for(const bet of bets){
+          for (const section of ['bankers', 'legs']) {
+            const arr = bet[section];
+            if (!arr || arr.length === 0) continue;
+            
+            try {
+              const xps = section === 'bankers' 
+                ? ["//*[normalize-space(text())='膽']", "//*[normalize-space(text())='Bankers']", "//*[normalize-space(text())='Banker']"] 
+                : ["//*[normalize-space(text())='配腳']", "//*[normalize-space(text())='Legs']"];
+                
+              for (let xp of xps) {
+                const els = document.evaluate(xp, document, null, 7, null);
+                for(let i=0; i<els.snapshotLength; i++){
+                  const el = els.snapshotItem(i);
+                  const isTray = el.closest && (el.closest('.selected-numbers') || el.closest('.infoList_cart_oW2U7') || el.closest('[id*="selected"]'));
+                  if (!isTray && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    triggerClick(el);
+                  }
+                }
+              }
+            } catch(e){}
+            await sleep(500);
+
+            for(const num of arr){
+              const str = num.toString();
+              const pad = num < 10 ? '0'+num : str;
+              const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
+              const els = document.evaluate(xp, document, null, 7, null);
+              let clicked = false;
+              let validEls = [];
+
+              for(let i=0; i<els.snapshotLength; i++){
+                const el = els.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0){
+                  let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
+                  if (isSelectedTray) continue;
+                  
+                  let hasChildrenText = false;
+                  for(let c of el.children) {
+                    if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                      hasChildrenText = true;
+                    }
+                  }
+                  if (hasChildrenText) continue;
+                  
+                  if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                      if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                        validEls.push(el);
+                      }
+                  }
+                }
+              }
+              if(validEls.length > 0){ 
+                const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                triggerClick(targetEl); 
+                clicked = true;
+              }
+
+              if (!clicked) console.log("找不到號碼: " + str);
+              await sleep(600);
+            }
+          }
+          await sleep(1500);
+          
+          let clickedAdd = false;
+          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項']";
+          const exactEls = document.evaluate(exactXp, document, null, 7, null);
+          for(let i=0; i<exactEls.snapshotLength; i++){
+            const el = exactEls.snapshotItem(i);
+            const rect = el.getBoundingClientRect();
+            if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+              triggerClick(el); clickedAdd = true; break; 
+            }
+          }
+          
+          if(clickedAdd) count++;
+          await sleep(4000);
+        }
+        alert("拖膽手機版點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。");
+      })();`;
+      return `javascript:${encodeURIComponent(script)}`;
     }
   };
 
@@ -2549,14 +2793,30 @@ export default function App() {
                     }}
                   />
 
-                  {generatedBets.length > 0 && (
+                  {generatedBets.length > 0 && !generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
                     <Button
                       variant="outline"
                       className="flex-1 max-w-sm bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={() => setIsHkjcDialogOpen(true)}
+                      onClick={() => {
+                        const evt = new MouseEvent("click", { bubbles: true });
+                        document.querySelector('[data-automation-id="hkjc-desktop-btn"]')?.dispatchEvent(evt);
+                      }}
                     >
                       <MonitorUp className="w-4 h-4 mr-1.5" />
                       自動點擊 HKJC 腳本
+                    </Button>
+                  )}
+                  {generatedBets.length > 0 && generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
+                    <Button
+                      variant="outline"
+                      className="flex-1 max-w-sm bg-[#60a5fa] hover:bg-[#3b82f6] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                      onClick={() => {
+                        const evt = new MouseEvent("click", { bubbles: true });
+                        document.querySelector('[data-automation-id="hkjc-banker-desktop-btn"]')?.dispatchEvent(evt);
+                      }}
+                    >
+                      <Sparkles className="w-4 h-4 mr-1.5" />
+                      自動點擊(拖膽PC) 腳本
                     </Button>
                   )}
                 </div>
@@ -2566,19 +2826,19 @@ export default function App() {
           )}
 
           {/* Right Column: Results */}
-          <div className={generatedBets.length === 0 ? "lg:col-span-7 space-y-4" : generatedBets.length > 5 ? "max-w-6xl mx-auto w-full space-y-2 sm:space-y-4" : "max-w-2xl mx-auto w-full space-y-1 sm:space-y-2"}>
+          <div id="results" className={generatedBets.length === 0 ? "lg:col-span-7 space-y-4" : generatedBets.length > 5 ? "max-w-6xl mx-auto w-full space-y-2 sm:space-y-4" : "max-w-2xl mx-auto w-full space-y-1 sm:space-y-2"}>
             {generatedBets.length > 0 ? (
               <div className="space-y-1 sm:space-y-2">
                 <div className="flex flex-col gap-1 items-center justify-center w-full">
-                  <div className="bg-black text-[#FFD700] border-4 border-black py-1 px-3 sm:py-1.5 sm:px-4 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit mx-auto transition-transform hover:-translate-y-1">
-                    <h2 className="text-lg sm:text-xl font-black flex items-center justify-center gap-1.5 sm:gap-2">
-                      <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#FFD700] shrink-0" />
-                      <span>成功生成 {generatedBets.length} 注號碼！ 🎉</span>
-                    </h2>
-                  </div>
+                  {!generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
+                    <div className="bg-black text-[#FFD700] border-4 border-black py-1 px-3 sm:py-1.5 sm:px-4 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit mx-auto transition-transform hover:-translate-y-1 mb-2">
+                      <h2 className="text-lg sm:text-xl font-black flex items-center justify-center gap-1.5 sm:gap-2">
+                        <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#FFD700] shrink-0" />
+                        <span>成功生成 {generatedBets.length} 注號碼！ 🎉</span>
+                      </h2>
+                    </div>
+                  )}
 
-
-                  
                   {(() => {
                     const allGeneratedNumbers = generatedBets.map(b => b.numbers).flat();
                     
@@ -2853,9 +3113,11 @@ export default function App() {
                       <MonitorUp className="w-3.5 h-3.5 mr-1" />
                       懸浮顯示 (免切換)
                     </Button>
-                    <Dialog>
-                      <DialogTrigger render={
+                    {!generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
+                      <Dialog>
+                        <DialogTrigger render={
                         <Button
+                          data-automation-id="hkjc-desktop-btn"
                           variant="outline"
                           size="sm"
                           className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#a5b4fc] text-black"
@@ -2917,18 +3179,20 @@ export default function App() {
                         </div>
                       </DialogContent>
                     </Dialog>
-                    <div className="flex w-full gap-1.5 sm:gap-2 mt-1 lg:mt-0 lg:w-auto lg:flex-none">
-                      <Dialog>
-                        <DialogTrigger render={
+                    )}
+                    <div className="flex flex-wrap w-full gap-1.5 sm:gap-2 mt-1 lg:mt-0 lg:w-auto lg:flex-none">
+                      {!generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
+                        <Dialog>
+                          <DialogTrigger render={
                           <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-1.5 sm:px-3 bg-[#fca5a5] text-black min-w-0"
+                            className="lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:px-3 bg-[#fca5a5] text-black"
                           />
                         }>
-                            <span className="flex items-center justify-center truncate px-1">
+                            <span className="flex items-center justify-center px-1 whitespace-nowrap">
                               <Smartphone className="w-3.5 h-3.5 mr-1 shrink-0" />
-                              <span className="truncate text-xs sm:text-sm">自動按球(手機)</span>
+                              <span className="text-xs sm:text-sm">自動按球(手機)</span>
                             </span>
                         </DialogTrigger>
                         <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
@@ -3017,6 +3281,158 @@ export default function App() {
                         </div>
                       </DialogContent>
                     </Dialog>
+                    )}
+                    {generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
+                      <Dialog>
+                        <DialogTrigger render={
+                          <Button
+                            data-automation-id="hkjc-banker-desktop-btn"
+                            variant="outline"
+                            size="sm"
+                            className="lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:px-3 bg-[#60a5fa] text-black"
+                          />
+                        }>
+                            <span className="flex items-center justify-center px-1 whitespace-nowrap">
+                              <Sparkles className="w-3.5 h-3.5 mr-1 shrink-0" />
+                              <span className="text-xs sm:text-sm">自動點擊(拖膽PC)</span>
+                            </span>
+                        </DialogTrigger>
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                          <DialogHeader>
+                            <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Sparkles className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽 PC 版自動點擊教學</DialogTitle>
+                            <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                              <span>此腳本專為 PC 版拖膽 (Banker) 生成。</span>
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="w-full mt-4 space-y-4">
+                            <div className="space-y-2">
+                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 複製腳本</h4>
+                              <Button 
+                                className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black hover:bg-[#FFD700] h-auto py-2"
+                                onClick={() => {
+                                  const script = decodeURIComponent(getBankerBookmarkletCode(true).replace('javascript:', ''));
+                                  navigator.clipboard.writeText(script);
+                                  toast.success("拖膽腳本已複製！");
+                                }}
+                              >
+                                <Copy className="w-4 h-4 mr-2" />
+                                點擊複製拖膽自動點擊腳本
+                              </Button>
+                            </div>
+                            <div className="space-y-2">
+                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 在 HKJC 網頁執行</h4>
+                              <ol className="list-decimal list-inside space-y-1.5 font-bold text-sm text-zinc-700">
+                                <li>前往 <a href="https://bet.hkjc.com/ch/marksix/Banker" target="_blank" rel="noreferrer" className="text-blue-600 underline">HKJC 六合彩拖膽投注網頁</a>。</li>
+                                <li>按下鍵盤 <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">F12</kbd> 打開開發者工具。</li>
+                                <li>切換到 <strong>Console (控制台)</strong> 標籤。</li>
+                                <li>貼上剛剛複製的腳本，然後按下 <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">Enter</kbd>。</li>
+                              </ol>
+                            </div>
+                            <div className="pt-3 border-t-4 border-black border-dashed">
+                              <p className="text-xs font-bold text-zinc-500 mb-2">或者將下方按鈕拖曳到書籤列，在 HKJC 拖膽網頁點擊該書籤：</p>
+                              <a
+                                ref={(el) => { if (el) el.setAttribute("href", getBankerBookmarkletCode(true)); }}
+                                onClick={(e) => e.preventDefault()}
+                                className="w-full flex items-center justify-center border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white cursor-grab active:cursor-grabbing text-black text-sm h-auto py-2 px-4 rounded-md mb-2"
+                              >
+                                <Link2 className="w-4 h-4 mr-2" />
+                                拖曳至書籤 (拖膽自動點擊)
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                    {generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
+                      <Dialog>
+                        <DialogTrigger render={
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:px-3 bg-[#f87171] text-black"
+                          />
+                        }>
+                            <span className="flex items-center justify-center px-1 whitespace-nowrap">
+                              <Smartphone className="w-3.5 h-3.5 mr-1 shrink-0" />
+                              <span className="text-xs sm:text-sm">自動拖膽(手機)</span>
+                            </span>
+                        </DialogTrigger>
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                          <DialogHeader>
+                            <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽手機版自動點擊教學</DialogTitle>
+                            <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                              <span>此腳本專為手機版拖膽(Banker)生成。</span>
+                            </DialogDescription>
+                          </DialogHeader>
+                          
+                          <div className="w-full mt-4 space-y-5">
+                            <div className="space-y-3">
+                              <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 準備書籤內容 (一鍵複製)</h4>
+                              <div className="flex gap-2">
+                                <Button 
+                                  variant="outline"
+                                  className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-2.5 text-sm sm:text-base px-2 truncate"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText("自動拖膽");
+                                    toast.success("名稱「自動拖膽」已複製！");
+                                  }}
+                                >
+                                  <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                  <span className="truncate">複製名稱</span>
+                                </Button>
+                                <Button 
+                                  className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#4ade80] text-black hover:bg-[#22c55e] h-auto py-2.5 text-sm sm:text-base px-2 truncate"
+                                  onClick={() => {
+                                    const scriptContent = decodeURIComponent(getBankerBookmarkletCode(false).replace('javascript:', ''));
+                                    navigator.clipboard.writeText("javascript:" + scriptContent);
+                                    toast.success("拖膽腳本代碼已複製！");
+                                  }}
+                                >
+                                  <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                  <span className="truncate">複製腳本代碼</span>
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 新增並修改書籤</h4>
+                              <ol className="list-decimal list-inside space-y-2 text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
+                                <li>點擊瀏覽器的 分享 或 選單，選擇 加入書籤 (先儲存當前網頁)。</li>
+                                <li>進入 書籤列表，點擊剛新增書籤的 編輯。</li>
+                                <li>將名稱改為貼上 <kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black">自動拖膽</kbd>。</li>
+                                <li>將網址(URL) 全部清空，並 貼上腳本代碼。<br/><span className="text-xs text-red-500 block mt-1">(請檢查開頭是否包含 javascript:)</span></li>
+                                <li>點擊 儲存。</li>
+                              </ol>
+                            </div>
+
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 在 HKJC 網頁使用</h4>
+                              <div className="text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200 space-y-3">
+                                <p>前往 <a href="#" onClick={(e) => {
+                                  e.preventDefault();
+                                  const isAndroid = /Android/i.test(navigator.userAgent);
+                                  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+                                  if (isAndroid) {
+                                    window.open("intent://bet.hkjc.com/ch/marksix/Banker#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fbet.hkjc.com%2Fch%2Fmarksix%2FBanker;end", "_top");
+                                  } else if (isIOS) {
+                                    window.open("googlechrome://bet.hkjc.com/ch/marksix/Banker", "_top");
+                                    setTimeout(() => {
+                                      window.open("https://bet.hkjc.com/ch/marksix/Banker", "_blank");
+                                    }, 1000);
+                                  } else {
+                                    window.open("https://bet.hkjc.com/ch/marksix/Banker", "_blank");
+                                  }
+                                }} className="text-blue-600 underline font-bold">HKJC 六合彩拖膽投注網頁</a>，選取您的書籤執行即可。</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
                     {(() => {
                       const allGeneratedNumbers = [...generatedBets, ...specialCoverBets].map((b: any) => b.numbers).flat();
                       const usedNums = new Set(allGeneratedNumbers);
@@ -3029,12 +3445,12 @@ export default function App() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-1.5 sm:px-3 bg-[#FFE867] hover:bg-[#FFD700] text-black min-w-0"
+                            className="lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:px-3 bg-[#FFE867] hover:bg-[#FFD700] text-black"
                             onClick={() => setIsCoverDialogOpen(true)}
                           >
-                            <span className="flex items-center justify-center truncate px-1">
+                            <span className="flex items-center justify-center px-1 whitespace-nowrap">
                               <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-600 shrink-0" />
-                              <span className="truncate text-[11px] sm:text-sm">全包剩餘 {unselectedCount} 號</span>
+                              <span className="text-[11px] sm:text-sm">全包剩餘 {unselectedCount} 號</span>
                             </span>
                           </Button>
                           <Dialog open={isCoverDialogOpen} onOpenChange={setIsCoverDialogOpen}>
