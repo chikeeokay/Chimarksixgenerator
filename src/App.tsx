@@ -308,7 +308,9 @@ export default function App() {
     const counts = Array(50).fill(0);
     MOCK_PAST_RESULTS.slice(0, 50).forEach(draw => {
       draw.numbers.forEach((n: number) => counts[n]++);
-      counts[draw.special] += 0.5;
+      if ((draw as any).special) {
+        counts[(draw as any).special] += 0.5;
+      }
     });
     // 所有可用的補充號碼 (非 unselected 的) 排列，由冷到熱
     const availableExtras = Array.from({length: 49}, (_, i) => i + 1)
@@ -3084,14 +3086,14 @@ export default function App() {
                   {generatedBets.map((bet, index) => (
                     <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
                       <div
-                        className={`w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}
+                        className={`w-fit max-w-[96vw] overflow-hidden border-[3px] border-black rounded-[24px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}
                         onClick={() => isAiGenerated && setViewingBetExpl({ index, bet })}
                       >
-                        <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
+                        <div className="flex items-center justify-start gap-1 sm:gap-2 min-h-[42px] sm:min-h-[50px] pr-1 pointer-events-none w-full">
                           <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
                             #{index + 1}
                           </div>
-                          <div className="flex flex-nowrap gap-0 sm:gap-0.5 items-center py-0.5">
+                          <div className="flex flex-wrap gap-0 sm:gap-0.5 items-center py-1 max-w-[calc(96vw-90px)] sm:max-w-[480px] md:max-w-[700px] lg:max-w-none">
                             {(() => {
                               const renderBall = (num: number, i: number) => {
                                 const color = getBallColor(num);
@@ -3110,18 +3112,22 @@ export default function App() {
                               
                               if (bet.isBankerLegs && bet.bankersCount) {
                                 return (
-                                  <div className="flex items-center pr-1">
-                                    <div className="flex items-center gap-0.5 bg-yellow-100/50 p-0.5 rounded-full border-2 border-black/10">
+                                  <div className="flex flex-wrap gap-y-1 items-center pr-1 w-full">
+                                    <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center bg-yellow-100/50 p-0.5 rounded-[20px] sm:rounded-full border-2 border-black/10">
                                       {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
                                     </div>
                                     <div className="flex items-center justify-center w-[22px] h-[22px] sm:w-6 sm:h-6 rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-xs border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 -ml-1 sm:-ml-2 -mr-1 sm:-mr-1.5 transform rotate-6">拖</div>
-                                    <div className="flex items-center gap-0.5">
+                                    <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center flex-1">
                                       {bet.numbers.slice(bet.bankersCount).map((num, i) => renderBall(num, i + bet.bankersCount!))}
                                     </div>
                                   </div>
                                 );
                               }
-                              return bet.numbers.map((num, i) => renderBall(num, i));
+                              return (
+                                <div className="flex flex-wrap gap-y-1 gap-x-0 sm:gap-x-0.5 items-center">
+                                  {bet.numbers.map((num, i) => renderBall(num, i))}
+                                </div>
+                              );
                             })()}
                           </div>
                           <button
@@ -3172,15 +3178,15 @@ export default function App() {
                       {specialCoverBets.map((bet, index) => (
                         <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
                           <div
-                            className="w-fit overflow-hidden border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 whitespace-nowrap z-0 relative cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                            className="w-fit max-w-[96vw] overflow-hidden border-[3px] border-black rounded-[24px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 z-0 relative cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                             onClick={() => setViewingBetExpl({ index: generatedBets.length + index, bet })}
                           >
                             <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border border-white translate-x-1/3 -translate-y-1/3 z-20 animate-pulse"></div>
-                            <div className="flex items-center justify-start gap-1 sm:gap-2 h-[42px] sm:h-[50px] pr-1 pointer-events-none">
+                            <div className="flex items-center justify-start gap-1 sm:gap-2 min-h-[42px] sm:min-h-[50px] pr-1 pointer-events-none w-full">
                               <div className="text-base sm:text-lg font-black text-[#FF4D4D] w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
                                 專屬
                               </div>
-                              <div className="flex flex-nowrap gap-0 sm:gap-0.5 items-center py-0.5">
+                              <div className="flex flex-wrap gap-0 sm:gap-0.5 items-center py-1 max-w-[calc(96vw-90px)] sm:max-w-[480px] md:max-w-[700px] lg:max-w-none">
                                 {(() => {
                                   const renderBall = (num: number, i: number) => {
                                     const color = getBallColor(num);
@@ -3199,18 +3205,22 @@ export default function App() {
                                   
                                   if (bet.isBankerLegs && bet.bankersCount) {
                                     return (
-                                      <div className="flex items-center pr-1">
-                                        <div className="flex items-center gap-0.5 bg-yellow-100/50 p-0.5 rounded-full border-2 border-black/10">
+                                      <div className="flex flex-wrap gap-y-1 items-center pr-1 w-full">
+                                        <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center bg-yellow-100/50 p-0.5 rounded-[20px] sm:rounded-full border-2 border-black/10">
                                           {bet.numbers.slice(0, bet.bankersCount).map((num: number, i: number) => renderBall(num, i))}
                                         </div>
                                         <div className="flex items-center justify-center w-[22px] h-[22px] sm:w-6 sm:h-6 rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-xs border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 -ml-1 sm:-ml-2 -mr-1 sm:-mr-1.5 transform rotate-6">拖</div>
-                                        <div className="flex items-center gap-0.5">
+                                        <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center flex-1">
                                           {bet.numbers.slice(bet.bankersCount).map((num: number, i: number) => renderBall(num, i + bet.bankersCount!))}
                                         </div>
                                       </div>
                                     );
                                   }
-                                  return bet.numbers.map((num: number, i: number) => renderBall(num, i));
+                                  return (
+                                    <div className="flex flex-wrap gap-y-1 gap-x-0 sm:gap-x-0.5 items-center">
+                                      {bet.numbers.map((num: number, i: number) => renderBall(num, i))}
+                                    </div>
+                                  );
                                 })()}
                               </div>
                             </div>
@@ -4081,8 +4091,8 @@ export default function App() {
           <div className={`w-full ${generatedBets.length >= 13 ? 'grid grid-cols-3 gap-x-8 gap-y-7 justify-items-center' : generatedBets.length >= 11 ? 'grid grid-cols-2 gap-x-8 gap-y-7 justify-items-center' : 'flex flex-col gap-7 items-center'}`}>
             {generatedBets.map((bet, index) => (
               <div key={index} className="flex flex-col items-center gap-1.5 w-fit">
-                <div className="flex items-center w-fit mx-auto bg-white border-[4px] border-black rounded-3xl h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-2 relative overflow-visible">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center w-fit mx-auto bg-white border-[4px] border-black rounded-3xl min-h-[70px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] box-border px-4 py-3 relative overflow-visible h-auto max-w-[900px]">
+                  <div className="flex items-center gap-3 w-full">
                     <div className="text-2xl font-black text-black w-10 text-center transform -rotate-[10deg] shrink-0 opacity-80">
                       #{index + 1}
                     </div>
@@ -4103,18 +4113,22 @@ export default function App() {
 
                         if (bet.isBankerLegs && bet.bankersCount) {
                           return (
-                            <div className="flex items-center pr-1">
-                              <div className="flex items-center gap-1 bg-yellow-100/50 p-1 rounded-full border-2 border-black/10">
+                            <div className="flex flex-wrap items-center gap-y-2 pr-1 w-full max-w-[800px]">
+                              <div className="flex flex-wrap items-center gap-1 gap-y-2 bg-yellow-100/50 p-1 rounded-[24px] border-2 border-black/10">
                                 {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
                               </div>
                               <div className="flex items-center justify-center w-[28px] h-[28px] rounded-full bg-black text-[#FFE867] font-black text-[13px] border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 mx-1 transform rotate-6">拖</div>
-                              <div className="flex items-center gap-1">
+                              <div className="flex flex-wrap items-center gap-1 gap-y-2 flex-1">
                                 {bet.numbers.slice(bet.bankersCount).map((num, i) => renderBall(num, i + bet.bankersCount!))}
                               </div>
                             </div>
                           );
                         }
-                        return bet.numbers.map((num, i) => renderBall(num, i));
+                        return (
+                          <div className="flex flex-wrap gap-1 gap-y-2 items-center w-full max-w-[800px]">
+                            {bet.numbers.map((num, i) => renderBall(num, i))}
+                          </div>
+                        );
                       })()}
                     </div>
                   </div>
