@@ -1856,9 +1856,9 @@ export default function App() {
         for(const bet of bets){
           showMsg("正在處理第 " + (count+1) + " 注...");
           const playTypeXps = [
+            "//*[normalize-space(.//text())='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]",
             "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
-            "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
-            "//*[normalize-space(.//text())='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
+            "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']"
           ];
           let frames = getFrames(window);
           for(let {w, d} of frames) {
@@ -1881,14 +1881,17 @@ export default function App() {
             const arr = bet[section];
             if (!arr || arr.length === 0) continue;
             
-            const xps = section === 'bankers' 
+                        const xps = section === 'bankers' 
               ? [
-                  "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
-                  "//*[normalize-space(.//text())='膽' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
+                  "//*[contains(translate(normalize-space(.), ' ', ''), '膽') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn')) and not(contains(normalize-space(.), '拖'))]",
+                  "//*[(contains(normalize-space(.), '膽') or contains(normalize-space(.), '膽拖')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
+                  "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']",
+                  "//*[contains(text(), '膽')]"
                 ] 
               : [
-                  "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
-                  "//*[normalize-space(.//text())='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
+                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
+                  "//*[normalize-space(text())='配腳' or normalize-space(text())='腳' or @value='配腳' or @alt='配腳']",
+                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽'))]"
                 ];
                 
             let framesTabs = getFrames(window);
@@ -1952,7 +1955,7 @@ export default function App() {
                      }
                   }
                   if(validEls.length > 0){ 
-                    targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                    targetEl = validEls[0];
                     targetWin = w;
                     break;
                   }
@@ -2085,10 +2088,10 @@ export default function App() {
           showMsg("正在處理第 " + (count+1) + " 注...");
           try {
             const playTypeXps = [
+              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]",
               "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
               "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
-              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
-              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
+              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']"
             ];
             for(let xp of playTypeXps) {
               const els = document.evaluate(xp, document, null, 7, null);
@@ -2108,15 +2111,18 @@ export default function App() {
             if (!arr || arr.length === 0) continue;
             
             try {
-              const xps = section === 'bankers' 
-                ? [
-                    "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
-                    "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
-                  ] 
-                : [
-                    "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
-                    "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
-                  ];
+                          const xps = section === 'bankers' 
+              ? [
+                  "//*[contains(translate(normalize-space(.), ' ', ''), '膽') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn')) and not(contains(normalize-space(.), '拖'))]",
+                  "//*[(contains(normalize-space(.), '膽') or contains(normalize-space(.), '膽拖')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
+                  "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']",
+                  "//*[contains(text(), '膽')]"
+                ] 
+              : [
+                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
+                  "//*[normalize-space(text())='配腳' or normalize-space(text())='腳' or @value='配腳' or @alt='配腳']",
+                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽'))]"
+                ];
                 
               for (let xp of xps) {
                 const els = document.evaluate(xp, document, null, 7, null);
@@ -2171,7 +2177,7 @@ export default function App() {
                 }
                 
                 if(validEls.length > 0){ 
-                  const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                  const targetEl = validEls[0];
                   triggerClick(targetEl); 
                   clicked = true;
                 }
@@ -2323,9 +2329,9 @@ export default function App() {
         for(const bet of bets){
           showMsg("正在處理第 " + (count+1) + " 注...");
           const playTypeXps = [
+            "//*[normalize-space(.//text())='單式' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]",
             "//*[normalize-space(text())='單式' or @value='單式' or @alt='單式']",
-            "//*[normalize-space(text())='Single' or @value='Single']",
-            "//*[normalize-space(.//text())='單式' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
+            "//*[normalize-space(text())='Single' or @value='Single']"
           ];
           let frames = getFrames(window);
           for(let {w, d} of frames) {
@@ -2518,9 +2524,9 @@ export default function App() {
           showMsg("正在處理第 " + (count+1) + " 注...");
           try {
             const playTypeXps = [
+              "//*[normalize-space(.//text())='單式' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]",
               "//*[normalize-space(text())='單式' or @value='單式' or @alt='單式']",
-              "//*[normalize-space(text())='Single' or @value='Single']",
-              "//*[normalize-space(.//text())='單式' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
+              "//*[normalize-space(text())='Single' or @value='Single']"
             ];
             for(let xp of playTypeXps) {
               const els = document.evaluate(xp, document, null, 7, null);
