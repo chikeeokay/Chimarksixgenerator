@@ -1831,6 +1831,7 @@ export default function App() {
           }
           el.click();
         };
+
         const isInCart = (element, win) => {
           if (win && isCartWindow(win)) return true;
           var curr = element;
@@ -1881,39 +1882,6 @@ export default function App() {
             const arr = bet[section];
             if (!arr || arr.length === 0) continue;
             
-                        const xps = section === 'bankers' 
-              ? [
-                  "//*[contains(translate(normalize-space(.), ' ', ''), '膽') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn')) and not(contains(normalize-space(.), '拖'))]",
-                  "//*[(contains(normalize-space(.), '膽') or contains(normalize-space(.), '膽拖')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
-                  "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']",
-                  "//*[contains(text(), '膽')]"
-                ] 
-              : [
-                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
-                  "//*[normalize-space(text())='配腳' or normalize-space(text())='腳' or @value='配腳' or @alt='配腳']",
-                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽'))]"
-                ];
-                
-            let framesTabs = getFrames(window);
-            for(let {w, d} of framesTabs) {
-              try {
-                for (let xp of xps) {
-                  const els = d.evaluate(xp, d, null, 7, null);
-                  let clickedTab = false;
-                  for(let i=0; i<els.snapshotLength; i++){
-                    const el = els.snapshotItem(i);
-                    const rect = el.getBoundingClientRect();
-                    if (!isInCart(el, w) && el.tagName !== 'BODY' && el.tagName !== 'HTML' && rect.height > 0) {
-                      triggerClick(el, w);
-                      clickedTab = true;
-                    }
-                  }
-                  if(clickedTab) break;
-                }
-              } catch(e){}
-            }
-            await sleep(800);
-
             for(const num of arr){
               const str = num.toString();
               const pad = num < 10 ? '0'+num : str;
@@ -1955,7 +1923,7 @@ export default function App() {
                      }
                   }
                   if(validEls.length > 0){ 
-                    targetEl = validEls[0];
+                    targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
                     targetWin = w;
                     break;
                   }
@@ -2111,18 +2079,18 @@ export default function App() {
             if (!arr || arr.length === 0) continue;
             
             try {
-                          const xps = section === 'bankers' 
-              ? [
-                  "//*[contains(translate(normalize-space(.), ' ', ''), '膽') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn')) and not(contains(normalize-space(.), '拖'))]",
-                  "//*[(contains(normalize-space(.), '膽') or contains(normalize-space(.), '膽拖')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
-                  "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']",
-                  "//*[contains(text(), '膽')]"
-                ] 
-              : [
-                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
-                  "//*[normalize-space(text())='配腳' or normalize-space(text())='腳' or @value='配腳' or @alt='配腳']",
-                  "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽'))]"
-                ];
+              const xps = section === 'bankers' 
+                ? [
+                    "//*[contains(translate(normalize-space(.), ' ', ''), '膽') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn')) and not(contains(normalize-space(.), '拖'))]",
+                    "//*[(contains(normalize-space(.), '膽') or contains(normalize-space(.), '膽拖')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
+                    "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']",
+                    "//*[contains(text(), '膽')]"
+                  ] 
+                : [
+                    "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
+                    "//*[normalize-space(text())='配腳' or normalize-space(text())='腳' or @value='配腳' or @alt='配腳']",
+                    "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽'))]"
+                  ];
                 
               for (let xp of xps) {
                 const els = document.evaluate(xp, document, null, 7, null);
@@ -2177,7 +2145,7 @@ export default function App() {
                 }
                 
                 if(validEls.length > 0){ 
-                  const targetEl = validEls[0];
+                  const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
                   triggerClick(targetEl); 
                   clicked = true;
                 }
@@ -2232,7 +2200,8 @@ export default function App() {
     }
   };
 
-  const getBookmarkletCode = (isDesktop: boolean = false) => {
+
+const getBookmarkletCode = (isDesktop: boolean = false) => {
     const defaultBets = generatedBets.filter(
       (b) => !b.isBankerLegs || (b.bankersCount || 0) === 0,
     );
