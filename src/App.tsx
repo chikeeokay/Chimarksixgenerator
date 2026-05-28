@@ -114,6 +114,14 @@ export interface DrawInfo {
   firstPrizeWinners?: number;
 }
 
+const getLegsCols = (count: number) => {
+  if (count <= 4) return count;
+  if (count === 5 || count === 6) return 3;
+  if (count === 7 || count === 8) return 4;
+  if (count === 9) return 3;
+  return 4;
+};
+
 export default function App() {
   const [betCount, setBetCount] = useState<number>(6);
   const [sumRange, setSumRange] = useState<[number, number]>([21, 279]);
@@ -173,7 +181,8 @@ export default function App() {
   const [aiBankerMode, setAiBankerMode] = useState(false);
   const [aiBankerBudget, setAiBankerBudget] = useState(100);
   const [coverUnselectedMode, setCoverUnselectedMode] = useState(false);
-  const [coverBudget, setCoverBudget] = useState(100);
+  const [coverBudget, setCoverBudget] = useState(300);
+  const [coverBetCount, setCoverBetCount] = useState(3);
   const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
   const [specialCoverBets, setSpecialCoverBets] = useState<any[]>([]);
 
@@ -300,9 +309,6 @@ export default function App() {
     }
 
     let shuffledUnselected = [...unselected].sort(() => 0.5 - Math.random());
-    let isBanker = true;
-    let bankers: number[] = [];
-    let legs: number[] = [];
     
     // 計算冷門號碼列表 (用作補充)
     const counts = Array(50).fill(0);
@@ -320,83 +326,82 @@ export default function App() {
          return counts[a] - counts[b]; // 由冷到熱
       });
 
-    let maxAffordableLegs = Math.floor(coverBudget / 10);
+    const betsCountToGenerate = coverBetCount || 1;
+    const individualBudget = Math.floor(coverBudget / betsCountToGenerate);
+    const newBets: any[] = [];
 
-    if (unselected.length <= 5) {
-      // 情況 A：未選號碼很少 (<= 5)
-      // 將所有未選號碼直接設為「膽」！
-      bankers = [...shuffledUnselected];
-      const neededLegsPerCombo = 6 - bankers.length;
+    for (let i = 0; i < betsCountToGenerate; i++) {
+      let isBanker = true;
+      let bankers: number[] = [];
+      let legs: number[] = [];
       
-      // 尋找最大可負擔的腳數 N (利用 C(N, neededLegsPerCombo))
-      let N = neededLegsPerCombo;
-      while (getCombinationsCount(N + 1, neededLegsPerCombo) * 10 <= coverBudget && N + 1 <= 44) {
-        N++;
-      }
-      
-      // 至少要有足够的腳來湊成 6 個號碼
-      N = Math.max(N, neededLegsPerCombo);
-      legs = availableExtras.slice(0, N);
-      
-      // 如果腳數等於所需的，這其實是一注單式
-      if (N === neededLegsPerCombo) {
-        isBanker = false;
-      }
-    } else {
-      // 情況 B：未選號碼超過 5 個
-      // 從未選號碼中抽出 5 個作為「膽」
-      bankers = shuffledUnselected.slice(0, 5);
-      
-      // 剩餘的未選號碼作為「腳」
-      let requiredLegs = shuffledUnselected.slice(5);
-      
-      if (maxAffordableLegs < 2) {
-         // 預算不足 $20，無法拖膽，只能買一注單式 (6個號碼)
-         bankers = [];
-         legs = shuffledUnselected.slice(0, 6);
-         isBanker = false;
+      // Determine bankers for this bet
+      if (shuffledUnselected.length <= 5) {
+        bankers = [...shuffledUnselected];
       } else {
-         // 預算可以買多注
-         let N = Math.min(requiredLegs.length, maxAffordableLegs);
-         
-         if (maxAffordableLegs > requiredLegs.length) {
-            // 預算充裕，加入冷門號碼
-            const extraCount = maxAffordableLegs - requiredLegs.length;
-            legs = [...requiredLegs, ...availableExtras.slice(0, extraCount)];
-         } else {
-            // 受預算限制
-            legs = requiredLegs.slice(0, N);
-         }
-         
-         // 至少 2 隻腳才算拖膽
-         if (legs.length < 2) {
-           legs.push(...availableExtras.slice(0, 2 - legs.length));
-         }
+        // Pick 5 bankers with wrap-around shift to diversify bankers and partition the risk
+        for (let j = 0; j < 5; j++) {
+          const idx = (i * 5 + j) % shuffledUnselected.length;
+          bankers.push(shuffledUnselected[idx]);
+        }
       }
-    }
 
-    if (isBanker && (bankers.length === 0 || legs.length < 2 || bankers.length + legs.length < 7)) {
-       isBanker = false;
-    }
+      const remainingUnselected = shuffledUnselected.filter(n => !bankers.includes(n));
+      const bCount = bankers.length;
+      
+      let maxAffordableLegs = Math.floor(individualBudget / 10);
+      let maxLegs = 6 - bCount;
+      while (getCombinationsCount(maxLegs + 1, 6 - bCount) * 10 <= individualBudget && maxLegs + 1 <= 49 - bCount) {
+        maxLegs++;
+      }
 
-    let bCount = bankers.length;
-    let selectedBankers = bankers.sort((a,b)=>a-b);
-    let selectedLegs = legs.sort((a,b)=>a-b);
-    const actualCost = isBanker ? getCombinationsCount(selectedLegs.length, 6 - bCount) * 10 : 10;
-    
-    const newBet = {
-      id: `unselected-cover-${Date.now()}`,
-      numbers: [...selectedBankers, ...selectedLegs],
-      explanations: isBanker 
-        ? [`全包未選號碼：精華 ${bCount} 膽拖 ${selectedLegs.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
-        : [`單式全覆蓋：因預算限制，為您挑選了包含未選號碼的組合，成本 $10。`],
-      type: isBanker ? 'banker' : 'standard',
-      isBankerLegs: isBanker,
-      bankersCount: isBanker ? bCount : 0
-    };
+      if (individualBudget < 10) {
+        bankers = [];
+        legs = shuffledUnselected.slice(0, 6);
+        isBanker = false;
+      } else if (bCount === 0 || bCount >= 6) {
+        bankers = [];
+        legs = shuffledUnselected.slice(0, 6);
+        isBanker = false;
+      } else {
+        let requiredLegs = remainingUnselected;
+        let N = Math.min(requiredLegs.length, maxLegs);
+        
+        if (maxLegs > requiredLegs.length) {
+          const extraCount = maxLegs - requiredLegs.length;
+          legs = [...requiredLegs, ...availableExtras.slice(0, extraCount)];
+        } else {
+          legs = requiredLegs.slice(0, N);
+        }
+        
+        const neededLegs = 6 - bCount;
+        if (legs.length < neededLegs) {
+          legs.push(...availableExtras.slice(0, neededLegs - legs.length));
+        }
+      }
+
+      if (isBanker && (bankers.length === 0 || legs.length < 2 || bankers.length + legs.length < 7)) {
+         isBanker = false;
+      }
+
+      const selectedBankers = bankers.sort((a,b)=>a-b);
+      const selectedLegs = legs.sort((a,b)=>a-b);
+      const actualCost = isBanker ? getCombinationsCount(selectedLegs.length, 6 - bCount) * 10 : 10;
+
+      newBets.push({
+        id: `unselected-cover-${Date.now()}-${i}`,
+        numbers: [...selectedBankers, ...selectedLegs],
+        explanations: isBanker 
+          ? [`全包未選號碼 [第 ${i+1} 組]：精華 ${bCount} 膽拖 ${selectedLegs.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
+          : [`單式全覆蓋 [第 ${i+1} 組]：因預算限制，為您挑選了包含未選號碼的組合，成本 $10。`],
+        type: isBanker ? 'banker' : 'standard',
+        isBankerLegs: isBanker,
+        bankersCount: isBanker ? bCount : 0
+      });
+    }
 
     // 生成全新一頁
-    setGeneratedBets([newBet]);
+    setGeneratedBets(newBets);
     setSpecialCoverBets([]);
     setIsAiGenerated(false);
     setIsCoverDialogOpen(false);
@@ -3312,50 +3317,66 @@ export default function App() {
                             </span>
                         </DialogTrigger>
                         <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
-                          <DialogHeader>
-                            <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Sparkles className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽 PC 版自動點擊教學</DialogTitle>
-                            <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
-                              <span>此腳本專為 PC 版拖膽 (Banker) 生成。</span>
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="w-full mt-4 space-y-4">
-                            <div className="space-y-2">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 複製腳本</h4>
-                              <Button 
-                                className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black hover:bg-[#FFD700] h-auto py-2"
-                                onClick={() => {
-                                  const script = decodeURIComponent(getBankerBookmarkletCode(true).replace('javascript:', ''));
-                                  navigator.clipboard.writeText(script);
-                                  toast.success("拖膽腳本已複製！");
-                                }}
-                              >
-                                <Copy className="w-4 h-4 mr-2" />
-                                點擊複製拖膽自動點擊腳本
-                              </Button>
-                            </div>
-                            <div className="space-y-2">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 在 HKJC 網頁執行</h4>
-                              <ol className="list-decimal list-inside space-y-1.5 font-bold text-sm text-zinc-700">
-                                <li>前往 <a href="https://bet.hkjc.com/ch/marksix/Banker" target="_blank" rel="noreferrer" className="text-blue-600 underline">HKJC 六合彩拖膽投注網頁</a>。</li>
-                                <li>按下鍵盤 <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">F12</kbd> 打開開發者工具。</li>
-                                <li>切換到 <strong>Console (控制台)</strong> 標籤。</li>
-                                <li>貼上剛剛複製的腳本，然後按下 <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">Enter</kbd>。</li>
-                              </ol>
-                            </div>
-                            <div className="pt-3 border-t-4 border-black border-dashed">
-                              <p className="text-xs font-bold text-zinc-500 mb-2">或者將下方按鈕拖曳到書籤列，在 HKJC 拖膽網頁點擊該書籤：</p>
-                              <a
-                                ref={(el) => { if (el) el.setAttribute("href", getBankerBookmarkletCode(true)); }}
-                                onClick={(e) => e.preventDefault()}
-                                className="w-full flex items-center justify-center border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white cursor-grab active:cursor-grabbing text-black text-sm h-auto py-2 px-4 rounded-md mb-2"
-                              >
-                                <Link2 className="w-4 h-4 mr-2" />
-                                拖曳至書籤 (拖膽自動點擊)
-                              </a>
+                          <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                            <DialogHeader>
+                              <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+                                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽電腦版自動點擊教學
+                              </DialogTitle>
+                              <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                                <span>此書籤腳本專為電腦桌面版瀏覽器的 拖膽 (Banker-Legs) 投注頁面 設計。</span>
+                              </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="w-full mt-4 space-y-5">
+                              <div className="space-y-3">
+                                <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 複製腳本與設定名稱</h4>
+                                <div className="flex gap-2">
+                                  <Button 
+                                    variant="outline"
+                                    className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-2.5 text-sm sm:text-base px-2 truncate"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText("自動拖膽(PC)");
+                                      toast.success("名稱已複製！");
+                                    }}
+                                  >
+                                    <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                    <span className="truncate">複製書籤名稱</span>
+                                  </Button>
+                                  <Button 
+                                    className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#4ade80] text-black hover:bg-[#22c55e] h-auto py-2.5 text-sm sm:text-base px-2 truncate"
+                                    onClick={() => {
+                                      const scriptContent = getBankerBookmarkletCode(true);
+                                      navigator.clipboard.writeText(scriptContent);
+                                      toast.success("拖膽(PC)腳本代碼已複製！");
+                                    }}
+                                  >
+                                    <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                    <span className="truncate">複製PC腳本代碼</span>
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 在瀏覽器新增書籤</h4>
+                                <ol className="list-decimal list-inside space-y-2 text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
+                                  <li>在瀏覽器書籤列上點擊右鍵，選擇 <b>新增網頁</b> 或 <b>新增書籤</b>。</li>
+                                  <li>名稱欄位貼上：<kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black">自動拖膽(PC)</kbd>。</li>
+                                  <li>網址 (URL) 欄位貼上複製的：<kbd className="bg-[rgba(0,0,0,0.05)] px-1 py-0.5 rounded text-xs select-all">javascript:...</kbd> 腳本代碼。</li>
+                                  <li>點擊 儲存。</li>
+                                </ol>
+                              </div>
+
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 前往投注網站啟用</h4>
+                                <div className="text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
+                                  <p className="leading-relaxed">
+                                    前往 <a href="https://bet.hkjc.com/ch/marksix/Banker" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">HKJC 六合彩拖膽投注網頁</a>，接著在書籤列上點擊您剛剛建立好的 <kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black">自動拖膽(PC)</kbd> 書籤，
+                                    腳本便會自動並分批將您的各注組合(包含多個膽配多個腳) 智能點擊並加到投注籃中！
+                                  </p>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
                         </DialogContent>
                       </Dialog>
                     )}
@@ -3373,8 +3394,8 @@ export default function App() {
                               <span className="text-xs sm:text-sm">自動拖膽(手機)</span>
                             </span>
                         </DialogTrigger>
-                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                          <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽手機版自動點擊教學</DialogTitle>
                             <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
@@ -3471,36 +3492,73 @@ export default function App() {
                             <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] bg-[#f8fafc] text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2 flex flex-col">
                               <DialogHeader className="bg-[#FFE867] border-b-4 border-black p-4 shrink-0">
                                 <DialogTitle className="text-lg sm:text-xl font-black flex items-center justify-center gap-2">
-                                  <Sparkles className="w-6 h-6 text-amber-600" />
-                                  自動生成拖膽策略 (節省成本)
+                                  <Sparkles className="w-6 h-6 text-amber-600 animate-pulse" />
+                                  自動生成分流拖膽組合
                                 </DialogTitle>
                               </DialogHeader>
-                              <div className="p-6 text-sm font-bold text-zinc-700 text-left leading-relaxed flex-1 space-y-6">
-                                <div className="font-black text-black text-[15px] sm:text-lg flex justify-between items-center bg-white p-3 sm:p-4 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                   <span>設定預算</span>
-                                   <span className="bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                     預算 ${coverBudget}
-                                   </span>
+                              <div className="p-6 text-sm font-bold text-zinc-700 text-left leading-relaxed flex-1 space-y-5">
+                                
+                                {/* Budget setting section */}
+                                <div className="space-y-2">
+                                  <div className="font-black text-black text-[15px] sm:text-lg flex justify-between items-center bg-white p-3 sm:p-4 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                     <span>設定總預算</span>
+                                     <span className="bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-mono">
+                                        ${coverBudget}
+                                     </span>
+                                  </div>
+                                  <div className="pt-2 pb-3 px-2">
+                                    <Slider
+                                      min={100}
+                                      max={600}
+                                      step={10}
+                                      value={[coverBudget]}
+                                      onValueChange={(val) => setCoverBudget(Array.isArray(val) ? val[0] : (Number(val) || 300))}
+                                      className="cursor-pointer"
+                                    />
+                                    <div className="flex justify-between text-xs font-black text-zinc-500 mt-1 px-1">
+                                      <span>$100</span>
+                                      <span>$600</span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <p className="font-medium text-sm sm:text-base text-zinc-600 text-center px-2">
-                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼生成一注獨立「膽拖」配搭。若預算不足以包含所有號碼，將以符合預算的前提下「覆蓋最多號碼」。
+
+                                {/* Drag/Bet count setting section */}
+                                <div className="space-y-2">
+                                  <div className="font-black text-black text-[15px] sm:text-lg flex justify-between items-center bg-white p-3 sm:p-4 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                     <span>生成拖膽注數</span>
+                                     <span className="bg-[#10b981] text-white px-3 py-1 border-[3px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                        {coverBetCount} 注
+                                      </span>
+                                  </div>
+                                  <div className="pt-2 pb-3 px-2">
+                                    <Slider
+                                      min={1}
+                                      max={6}
+                                      step={1}
+                                      value={[coverBetCount]}
+                                      onValueChange={(val) => setCoverBetCount(Array.isArray(val) ? val[0] : (Number(val) || 3))}
+                                      className="cursor-pointer"
+                                    />
+                                    <div className="flex justify-between text-xs font-black text-zinc-500 mt-1 px-1">
+                                      <span>1 注</span>
+                                      <span>6 注</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <p className="font-bold text-sm sm:text-base text-zinc-600 bg-zinc-100 p-2.5 rounded-lg border-2 border-black/10 text-center leading-normal">
+                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼，自動分散生成 <span className="font-black text-emerald-600">{coverBetCount} 注</span> 拖膽組合。每注都配搭不同的精華「膽」，大大降低因單一膽不中立刻慘負的風險！
                                 </p>
-                                <div className="pt-2 pb-6 px-4">
-                                  <Slider
-                                    min={40}
-                                    max={600}
-                                    step={10}
-                                    value={[coverBudget]}
-                                    onValueChange={(val) => setCoverBudget(Array.isArray(val) ? val[0] : (Number(val) || 100))}
-                                    className="cursor-pointer"
-                                  />
-                                </div>
+
                                 <Button
-                                   className="w-full bg-[#10b981] hover:bg-[#059669] text-black h-auto py-3.5 px-6 text-[17px] font-black border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2"
-                                   onClick={handleAddCoverUnselectedBet}
+                                   className="w-full bg-[#10b981] hover:bg-[#059669] text-black h-auto py-3.5 px-6 text-[17px] font-black border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 mt-4"
+                                   onClick={() => {
+                                     handleAddCoverUnselectedBet();
+                                     setIsCoverDialogOpen(false);
+                                   }}
                                 >
-                                   <Sparkles className="w-5 h-5 text-white" />
-                                   開始智能生成獨立拖膽
+                                   <Sparkles className="w-5 h-5 text-white animate-pulse" />
+                                   開始智能生成分流拖膽
                                 </Button>
                               </div>
                             </DialogContent>
@@ -3523,7 +3581,7 @@ export default function App() {
                           <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
                             #{index + 1}
                           </div>
-                          <div className="flex flex-wrap gap-0 sm:gap-0.5 items-center py-1 max-w-[calc(96vw-90px)] sm:max-w-[480px] md:max-w-[700px] lg:max-w-none">
+                          <div className={`py-1 ${bet.isBankerLegs ? 'flex-1 grow flex flex-col items-center justify-center min-w-0' : 'flex flex-wrap gap-0 sm:gap-0.5 items-center max-w-[calc(96vw-90px)] sm:max-w-[480px] md:max-w-[700px] lg:max-w-none shrink-0'}`}>
                             {(() => {
                               const renderBall = (num: number, i: number) => {
                                 const color = getBallColor(num);
@@ -3541,13 +3599,20 @@ export default function App() {
                               };
                               
                               if (bet.isBankerLegs && bet.bankersCount) {
+                                const legsCount = bet.numbers.length - bet.bankersCount;
+                                const cols = getLegsCols(legsCount);
                                 return (
-                                  <div className="flex flex-wrap gap-y-1 items-center pr-1 w-full">
-                                    <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center bg-yellow-100/50 p-0.5 rounded-[20px] sm:rounded-full border-2 border-black/10">
-                                      {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
+                                  <div className="flex flex-col gap-1.5 items-center w-full my-1">
+                                    <div className="relative">
+                                      <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-1.5 bg-yellow-100/50 px-2 sm:px-3 py-0.5 rounded-[18px] border-2 border-black/10">
+                                        {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
+                                      </div>
+                                      <div className="absolute -bottom-2 -right-1.5 flex items-center justify-center w-[22px] h-[22px] sm:w-[26px] sm:h-[26px] rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-[12px] border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] z-10 transform rotate-6">拖</div>
                                     </div>
-                                    <div className="flex items-center justify-center w-[22px] h-[22px] sm:w-6 sm:h-6 rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-xs border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 -ml-1 sm:-ml-2 -mr-1 sm:-mr-1.5 transform rotate-6">拖</div>
-                                    <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center flex-1">
+                                    <div 
+                                      className="grid gap-1 sm:gap-1.5 mt-1.5 justify-center place-items-center"
+                                      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                                    >
                                       {bet.numbers.slice(bet.bankersCount).map((num, i) => renderBall(num, i + bet.bankersCount!))}
                                     </div>
                                   </div>
@@ -3616,7 +3681,7 @@ export default function App() {
                               <div className="text-base sm:text-lg font-black text-[#FF4D4D] w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
                                 專屬
                               </div>
-                              <div className="flex flex-wrap gap-0 sm:gap-0.5 items-center py-1 max-w-[calc(96vw-90px)] sm:max-w-[480px] md:max-w-[700px] lg:max-w-none">
+                              <div className={`py-1 ${bet.isBankerLegs ? 'flex-1 grow flex flex-col items-center justify-center min-w-0' : 'flex flex-wrap gap-0 sm:gap-0.5 items-center max-w-[calc(96vw-90px)] sm:max-w-[480px] md:max-w-[700px] lg:max-w-none shrink-0'}`}>
                                 {(() => {
                                   const renderBall = (num: number, i: number) => {
                                     const color = getBallColor(num);
@@ -3634,13 +3699,20 @@ export default function App() {
                                   };
                                   
                                   if (bet.isBankerLegs && bet.bankersCount) {
+                                    const legsCount = bet.numbers.length - bet.bankersCount;
+                                    const cols = getLegsCols(legsCount);
                                     return (
-                                      <div className="flex flex-wrap gap-y-1 items-center pr-1 w-full">
-                                        <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center bg-yellow-100/50 p-0.5 rounded-[20px] sm:rounded-full border-2 border-black/10">
-                                          {bet.numbers.slice(0, bet.bankersCount).map((num: number, i: number) => renderBall(num, i))}
+                                      <div className="flex flex-col gap-1.5 items-center w-full my-1">
+                                        <div className="relative">
+                                          <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-1.5 bg-yellow-100/50 px-2 sm:px-3 py-0.5 rounded-[18px] border-2 border-black/10">
+                                            {bet.numbers.slice(0, bet.bankersCount).map((num: number, i: number) => renderBall(num, i))}
+                                          </div>
+                                          <div className="absolute -bottom-2 -right-1.5 flex items-center justify-center w-[22px] h-[22px] sm:w-[26px] sm:h-[26px] rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-[12px] border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] z-10 transform rotate-6">拖</div>
                                         </div>
-                                        <div className="flex items-center justify-center w-[22px] h-[22px] sm:w-6 sm:h-6 rounded-full bg-black text-[#FFE867] font-black text-[10px] sm:text-xs border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 -ml-1 sm:-ml-2 -mr-1 sm:-mr-1.5 transform rotate-6">拖</div>
-                                        <div className="flex flex-wrap gap-x-0.5 gap-y-1 items-center flex-1">
+                                        <div 
+                                          className="grid gap-1 sm:gap-1.5 mt-1.5 justify-center place-items-center"
+                                          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                                        >
                                           {bet.numbers.slice(bet.bankersCount).map((num: number, i: number) => renderBall(num, i + bet.bankersCount!))}
                                         </div>
                                       </div>
@@ -4495,13 +4567,20 @@ export default function App() {
                   );
                 };
                 if (bet.isBankerLegs && bet.bankersCount) {
+                  const legsCount = bet.numbers.length - bet.bankersCount;
+                  const cols = getLegsCols(legsCount);
                   return (
-                    <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-center">
-                      <div className="flex items-center gap-0.5 bg-yellow-100/50 p-1 rounded-full border-2 border-black/10">
-                        {bet.numbers.slice(0, bet.bankersCount).map(n => renderBall(n))}
+                    <div className="flex flex-col gap-2 items-center w-full my-2">
+                      <div className="relative">
+                        <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-2 bg-yellow-100/50 px-2 sm:px-3 py-1 rounded-[24px] border-2 border-black/10">
+                          {bet.numbers.slice(0, bet.bankersCount).map(n => renderBall(n))}
+                        </div>
+                        <div className="absolute -bottom-3 -right-2 flex items-center justify-center w-[24px] h-[24px] sm:w-[28px] sm:h-[28px] rounded-full bg-black text-[#FFE867] font-black text-[11px] sm:text-[13px] border-[2px] border-white shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] z-10 transform rotate-6">拖</div>
                       </div>
-                      <div className="flex items-center justify-center w-[24px] h-[24px] sm:w-[28px] sm:h-[28px] rounded-full bg-black text-[#FFE867] font-black text-[11px] sm:text-[13px] border-[2px] border-white shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 transform rotate-6 mx-0.5">拖</div>
-                      <div className="flex items-center gap-0.5 flex-wrap justify-center">
+                      <div 
+                        className="grid gap-1 sm:gap-2 mt-2 justify-center place-items-center"
+                        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                      >
                         {bet.numbers.slice(bet.bankersCount).map(n => renderBall(n))}
                       </div>
                     </div>
@@ -4552,13 +4631,20 @@ export default function App() {
                         };
 
                         if (bet.isBankerLegs && bet.bankersCount) {
+                          const legsCount = bet.numbers.length - bet.bankersCount;
+                          const cols = getLegsCols(legsCount);
                           return (
-                            <div className="flex flex-wrap items-center gap-y-2 pr-1 w-full max-w-[800px]">
-                              <div className="flex flex-wrap items-center gap-1 gap-y-2 bg-yellow-100/50 p-1 rounded-[24px] border-2 border-black/10">
-                                {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
+                            <div className="flex flex-col gap-2 items-center w-full max-w-[800px] my-3">
+                              <div className="relative">
+                                <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-1.5 bg-yellow-100/50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-[28px] border-2 border-black/10">
+                                  {bet.numbers.slice(0, bet.bankersCount).map((num, i) => renderBall(num, i))}
+                                </div>
+                                <div className="absolute -bottom-3 -right-2 flex items-center justify-center w-[26px] h-[26px] sm:w-[32px] sm:h-[32px] rounded-full bg-black text-[#FFE867] font-black text-[12px] sm:text-[14px] border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] z-10 transform rotate-6">拖</div>
                               </div>
-                              <div className="flex items-center justify-center w-[28px] h-[28px] rounded-full bg-black text-[#FFE867] font-black text-[13px] border-[2px] border-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0 z-10 mx-1 transform rotate-6">拖</div>
-                              <div className="flex flex-wrap items-center gap-1 gap-y-2 flex-1">
+                              <div 
+                                className="grid gap-1 sm:gap-1.5 mt-2 justify-center place-items-center"
+                                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                              >
                                 {bet.numbers.slice(bet.bankersCount).map((num, i) => renderBall(num, i + bet.bankersCount!))}
                               </div>
                             </div>
