@@ -1454,10 +1454,10 @@ export default function App() {
               try {
                 const xps = section === 'bankers' 
                   ? [
-                      "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']", 
+                      "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
                       "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
                       "//*[normalize-space(text())='Banker' or @value='Banker']",
-                      "//*[normalize-space(.)='膽' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                      "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
                     ] 
                   : [
                       "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
@@ -1597,10 +1597,10 @@ export default function App() {
             try {
               const xps = section === 'bankers' 
                 ? [
-                    "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']", 
+                    "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
                     "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
                     "//*[normalize-space(text())='Banker' or @value='Banker']",
-                    "//*[normalize-space(.)='膽' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                    "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
                   ] 
                 : [
                     "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
