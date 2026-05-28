@@ -206,6 +206,7 @@ export default function App() {
   const [aiReasoning, setAiReasoning] = useState<string[]>([]);
   const [aiBankerMode, setAiBankerMode] = useState(false);
   const [aiBankerBudget, setAiBankerBudget] = useState(100);
+  const [aiBankerBetCount, setAiBankerBetCount] = useState(1);
   const [coverUnselectedMode, setCoverUnselectedMode] = useState(false);
   const [coverBudget, setCoverBudget] = useState(300);
   const [coverBetCount, setCoverBetCount] = useState(3);
@@ -361,13 +362,16 @@ export default function App() {
       let bankers: number[] = [];
       let legs: number[] = [];
       
+      // Determine random banker count (2 to 4)
+      const targetBCount = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
+      
       // Determine bankers for this bet
-      if (shuffledUnselected.length <= 5) {
+      if (shuffledUnselected.length <= targetBCount) {
         bankers = [...shuffledUnselected];
       } else {
-        // Pick 5 bankers with wrap-around shift to diversify bankers and partition the risk
-        for (let j = 0; j < 5; j++) {
-          const idx = (i * 5 + j) % shuffledUnselected.length;
+        // Pick targetBCount bankers with wrap-around shift to diversify bankers and partition the risk
+        for (let j = 0; j < targetBCount; j++) {
+          const idx = (i * targetBCount + j) % shuffledUnselected.length;
           bankers.push(shuffledUnselected[idx]);
         }
       }
@@ -608,56 +612,61 @@ export default function App() {
       let allBets: any[] = [];
 
       if (aiBankerMode && aiBetCount >= 10) {
-        let bestConfig = { bCount: 2, legsLength: 4, cost: 10 };
-        const configs: {bCount: number, legsLength: number, cost: number}[] = [];
-        for (let b = 1; b <= 4; b++) {
-          for (let l = 6 - b; l <= 20; l++) {
-            const cost = getCombinationsCount(l, 6 - b) * 10;
-            if (cost <= aiBankerBudget && cost >= 20) {
-              configs.push({ bCount: b, legsLength: l, cost });
-            }
-          }
-        }
-        if (configs.length > 0) {
-          configs.sort((a,b) => b.cost - a.cost);
-          const topConfigs = configs.filter(c => c.cost === configs[0].cost);
-          bestConfig = topConfigs[Math.floor(Math.random() * topConfigs.length)];
-        }
-        
         setAiReasoning([
-          `啟動大數據拖膽模式：因注數較多，AI 已自動改為為您精研「膽拖」配搭，以貼近 $${aiBankerBudget} 預算極大化覆蓋號碼！`,
+          `啟動大數據拖膽模式：因注數較多，AI 已自動改為為您精研「膽拖」配搭，以貼近總預算 $${aiBankerBudget} 極大化覆蓋號碼！`,
           ...explanations,
         ]);
-        
-        const rawBets = generateBets({
-          ...baseGenerateOptions,
-          complexRecentStrategy: { enabled: true, excludeRanges: [{ start: 1, end: 2 }], includeRanges: [] },
-          count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2),
-          aiStrategy: "balanced",
-        });
-        
-        const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort((a,b)=>a-b);
-        const targetTotal = bestConfig.bCount + bestConfig.legsLength;
-        const selectedNums = merged.slice(0, targetTotal);
-        while (selectedNums.length < targetTotal) {
-           const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
-           for (const n of nextRanked) {
-             if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
-               selectedNums.push(n);
+
+        const betsCountToGenerate = aiBankerBetCount || 1;
+        const individualBudget = Math.floor(aiBankerBudget / betsCountToGenerate);
+
+        for (let i = 0; i < betsCountToGenerate; i++) {
+          const chosenB = Math.floor(Math.random() * 3) + 2; // Randomly 2 to 4 bankers
+          let targetL = 6 - chosenB;
+          let currentCost = 10;
+          
+          for (let l = 6 - chosenB + 1; l <= 40; l++) {
+            const cost = getCombinationsCount(l, 6 - chosenB) * 10;
+            if (cost <= individualBudget) {
+              targetL = l;
+              currentCost = cost;
+            } else {
+              break;
+            }
+          }
+          
+          const bestConfig = { bCount: chosenB, legsLength: targetL, cost: currentCost };
+          
+          const rawBets = generateBets({
+            ...baseGenerateOptions,
+            complexRecentStrategy: { enabled: true, excludeRanges: [{ start: 1, end: 2 }], includeRanges: [] },
+            count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2),
+            aiStrategy: i % 2 === 0 ? "balanced" : "cold", // Mix strategies
+          });
+          
+          const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort((a,b)=>a-b);
+          const targetTotal = bestConfig.bCount + bestConfig.legsLength;
+          const selectedNums = merged.slice(0, targetTotal);
+          while (selectedNums.length < targetTotal) {
+             const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
+             for (const n of nextRanked) {
+               if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
+                 selectedNums.push(n);
+               }
              }
-           }
+          }
+          selectedNums.sort(() => Math.random() - 0.5);
+          const bCount = bestConfig.bCount;
+          const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
+          const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
+          
+          allBets.push({
+            numbers: [...bankers, ...legs],
+            explanations: [`AI 智能膽拖配搭 [第 ${i+1} 組]：精選 ${bankers.length}膽 ${legs.length}腳，結合冷熱分佈機制，成本 $${bestConfig.cost}，大幅提升覆蓋率！`],
+            isBankerLegs: true,
+            bankersCount: bankers.length
+          });
         }
-        selectedNums.sort(() => Math.random() - 0.5);
-        const bCount = bestConfig.bCount;
-        const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
-        const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
-        
-        allBets.push({
-          numbers: [...bankers, ...legs],
-          explanations: [`AI 智能膽拖配搭：精選 ${bankers.length}膽 ${legs.length}腳，結合冷熱分佈機制，成本 $${bestConfig.cost}，大幅提升覆蓋率！`],
-          isBankerLegs: true,
-          bankersCount: bankers.length
-        });
       } else {
         for (let s = 0; s < 3; s++) {
           let countForStrategy = counts[s];
@@ -3675,7 +3684,7 @@ export default function App() {
                                   <div className="pt-2 pb-3 px-2">
                                     <Slider
                                       min={100}
-                                      max={600}
+                                      max={800}
                                       step={10}
                                       value={[coverBudget]}
                                       onValueChange={(val) => setCoverBudget(Array.isArray(val) ? val[0] : (Number(val) || 300))}
@@ -3683,7 +3692,7 @@ export default function App() {
                                     />
                                     <div className="flex justify-between text-xs font-black text-zinc-500 mt-1 px-1">
                                       <span>$100</span>
-                                      <span>$600</span>
+                                      <span>$800</span>
                                     </div>
                                   </div>
                                 </div>
@@ -3699,7 +3708,7 @@ export default function App() {
                                   <div className="pt-2 pb-3 px-2">
                                     <Slider
                                       min={1}
-                                      max={6}
+                                      max={10}
                                       step={1}
                                       value={[coverBetCount]}
                                       onValueChange={(val) => setCoverBetCount(Array.isArray(val) ? val[0] : (Number(val) || 3))}
@@ -3707,7 +3716,7 @@ export default function App() {
                                     />
                                     <div className="flex justify-between text-xs font-black text-zinc-500 mt-1 px-1">
                                       <span>1 注</span>
-                                      <span>6 注</span>
+                                      <span>10 注</span>
                                     </div>
                                   </div>
                                 </div>
@@ -5035,17 +5044,45 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    <span className="font-normal text-xs sm:text-[13px] text-zinc-600 pl-8 flex block leading-tight mb-4">當注數大於10注時，由 AI 改為生成一注「膽拖」配搭，以符合預算覆蓋最多號碼。</span>
+                    <span className="font-normal text-xs sm:text-[13px] text-zinc-600 pl-8 flex block leading-tight mb-4">當注數大於10注時，由 AI 改為生成多注「膽拖」配搭，以符合預算覆蓋最多號碼。</span>
                     {aiBankerMode && (
-                      <div className="pl-6 pt-1 pb-2">
-                        <Slider
-                          min={40}
-                          max={300}
-                          step={10}
-                          value={[aiBankerBudget]}
-                          onValueChange={(val) => setAiBankerBudget(Array.isArray(val) ? val[0] : val)}
-                          className="py-1 sm:py-2 cursor-pointer"
-                        />
+                      <div className="pl-6 pt-1 pb-2 space-y-4">
+                        <div>
+                          <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
+                            <span>總預算</span>
+                            <span>${aiBankerBudget}</span>
+                          </div>
+                          <Slider
+                            min={100}
+                            max={800}
+                            step={10}
+                            value={[aiBankerBudget]}
+                            onValueChange={(val) => setAiBankerBudget(Array.isArray(val) ? val[0] : val)}
+                            className="py-1 cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
+                            <span>$100</span>
+                            <span>$800</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
+                            <span>生成拖膽注數</span>
+                            <span>{aiBankerBetCount} 注</span>
+                          </div>
+                          <Slider
+                            min={1}
+                            max={10}
+                            step={1}
+                            value={[aiBankerBetCount]}
+                            onValueChange={(val) => setAiBankerBetCount(Array.isArray(val) ? val[0] : val)}
+                            className="py-1 cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
+                            <span>1 注</span>
+                            <span>10 注</span>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
