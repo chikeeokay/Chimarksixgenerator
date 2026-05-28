@@ -2037,44 +2037,95 @@ export default function App() {
         };
         let count = 0;
         for(const bet of bets){
-          for(const num of bet){
-            const str = num.toString();
-            const pad = num < 10 ? '0'+num : str;
-            const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
-            const els = document.evaluate(xp, document, null, 7, null);
-            let clicked = false;
-            let targetEl = null;
-
-            for(let i=0; i<els.snapshotLength; i++){
-              const el = els.snapshotItem(i);
-              const rect = el.getBoundingClientRect();
-              if(rect.width > 0 && rect.height > 0){
-                if (isInCart(el)) continue;
-                
-                let hasChildrenText = false;
-                for(let c of el.children) {
-                  if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
-                    hasChildrenText = true;
-                  }
-                }
-                if (hasChildrenText) continue;
-                
-                if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
-                    targetEl = el;
-                    const elClass = (el.className || '').toString().toLowerCase();
-                    if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
-                      break;
-                    }
+          // 確保切換回「膽拖」玩法模式
+          try {
+            const playTypeXps = [
+              "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
+              "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
+              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
+              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
+            ];
+            for(let xp of playTypeXps) {
+              const els = document.evaluate(xp, document, null, 7, null);
+              for(let j=0; j<els.snapshotLength; j++){
+                const el = els.snapshotItem(j);
+                if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                  triggerClick(el);
                 }
               }
             }
-            if(targetEl){ 
-              triggerClick(targetEl); 
-              clicked = true;
-            }
+          } catch(e){}
+          await sleep(1000);
 
-            if (!clicked) console.log("找不到號碼: " + str);
-            await sleep(800);
+          for (const section of ['bankers', 'legs']) {
+            const arr = bet[section];
+            if (!arr || arr.length === 0) continue;
+            
+            try {
+              const xps = section === 'bankers' 
+                ? [
+                    "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
+                    "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
+                    "//*[normalize-space(text())='Banker' or @value='Banker']",
+                    "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                  ] 
+                : [
+                    "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
+                    "//*[normalize-space(text())='Legs' or @value='Legs']",
+                    "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                  ];
+                
+              for (let xp of xps) {
+                const els = document.evaluate(xp, document, null, 7, null);
+                for(let i=0; i<els.snapshotLength; i++){
+                  const el = els.snapshotItem(i);
+                  if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    triggerClick(el);
+                  }
+                }
+              }
+            } catch(e){}
+            await sleep(500);
+
+            for(const num of arr){
+              const str = num.toString();
+              const pad = num < 10 ? '0'+num : str;
+              const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
+              const els = document.evaluate(xp, document, null, 7, null);
+              let clicked = false;
+              let targetEl = null;
+
+              for(let i=0; i<els.snapshotLength; i++){
+                const el = els.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0){
+                  if (isInCart(el)) continue;
+                  
+                  let hasChildrenText = false;
+                  for(let c of el.children) {
+                    if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                      hasChildrenText = true;
+                    }
+                  }
+                  if (hasChildrenText) continue;
+                  
+                  if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                      targetEl = el;
+                      const elClass = (el.className || '').toString().toLowerCase();
+                      if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
+                        break;
+                      }
+                  }
+                }
+              }
+              if(targetEl){ 
+                triggerClick(targetEl); 
+                clicked = true;
+              }
+
+              if (!clicked) console.log("找不到號碼: " + str);
+              await sleep(800);
+            }
           }
           await sleep(2000);
           
