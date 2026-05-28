@@ -1618,7 +1618,8 @@ export default function App() {
                           }
                           if (hasChildrenText) continue;
                           if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
-                              if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                              const elClass = (el.className || '').toString().toLowerCase();
+                              if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
                                 validEls.push(el);
                               }
                           }
@@ -1679,6 +1680,14 @@ export default function App() {
             el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
             el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
+          try {
+            el.dispatchEvent(new Event('touchstart', {bubbles: true}));
+            el.dispatchEvent(new Event('touchend', {bubbles: true}));
+          } catch(e){}
+          try {
+            el.dispatchEvent(new Event('touchstart', {bubbles: true}));
+            el.dispatchEvent(new Event('touchend', {bubbles: true}));
+          } catch(e){}
         };
         const isInCart = (element) => {
           var curr = element;
@@ -1779,11 +1788,12 @@ export default function App() {
                   }
                   if (hasChildrenText) continue;
                   
-                  if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
-                      if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
-                        validEls.push(el);
-                      }
-                  }
+                          if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                              const elClass = (el.className || '').toString().toLowerCase();
+                              if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
+                                validEls.push(el);
+                              }
+                          }
                 }
               }
               if(validEls.length > 0){ 
@@ -1799,7 +1809,7 @@ export default function App() {
           await sleep(1500);
           
           let clickedAdd = false;
-          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
+          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or normalize-space(.)='確定' or normalize-space(.)='加入' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
           const exactEls = document.evaluate(exactXp, document, null, 7, null);
           for(let i=exactEls.snapshotLength - 1; i>=0; i--){
             const el = exactEls.snapshotItem(i);
@@ -1996,6 +2006,10 @@ export default function App() {
             el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
             el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
+          try {
+            el.dispatchEvent(new Event('touchstart', {bubbles: true}));
+            el.dispatchEvent(new Event('touchend', {bubbles: true}));
+          } catch(e){}
         };
         const isInCart = (element) => {
           var curr = element;
@@ -2047,7 +2061,8 @@ export default function App() {
                 
                 if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
                     targetEl = el;
-                    if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                    const elClass = (el.className || '').toString().toLowerCase();
+                    if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
                       break;
                     }
                 }
@@ -2064,16 +2079,16 @@ export default function App() {
           await sleep(2000);
           
           let clickedAdd = false;
-          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項']";
+          const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or normalize-space(.)='確定' or normalize-space(.)='加入' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
           const exactEls = document.evaluate(exactXp, document, null, 7, null);
           for(let i=exactEls.snapshotLength - 1; i>=0; i--){
             const el = exactEls.snapshotItem(i);
             const rect = el.getBoundingClientRect();
-            if(rect.width > 0 && rect.height > 0){ triggerClick(el); clickedAdd = true; break; }
+            if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ triggerClick(el); clickedAdd = true; break; }
           }
           
           if(!clickedAdd) {
-            const fallbackXp = "//*[contains(text(), '添加到投注區') or contains(text(), '加入注項')]";
+            const fallbackXp = "//*[contains(text(), '添加到投注區') or contains(text(), '加入注項') or contains(text(), '確定') or contains(text(), '加入')]";
             const fallbackEls = document.evaluate(fallbackXp, document, null, 7, null);
             for(let i=fallbackEls.snapshotLength - 1; i>=0; i--){
               const el = fallbackEls.snapshotItem(i);
