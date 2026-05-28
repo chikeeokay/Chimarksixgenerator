@@ -205,10 +205,13 @@ export default function App() {
   const [aiAnalysisDrawsUsed, setAiAnalysisDrawsUsed] = useState(50);
   const [aiReasoning, setAiReasoning] = useState<string[]>([]);
   const [aiBankerMode, setAiBankerMode] = useState(false);
-  const [aiBankerBudget, setAiBankerBudget] = useState(100);
+  const [aiBankerBudget, setAiBankerBudget] = useState(300);
+  const [aiBankerBetCount, setAiBankerBetCount] = useState(3);
+  const [aiBankerCount, setAiBankerCount] = useState<string>("random");
   const [coverUnselectedMode, setCoverUnselectedMode] = useState(false);
   const [coverBudget, setCoverBudget] = useState(300);
   const [coverBetCount, setCoverBetCount] = useState(3);
+  const [coverBankerCount, setCoverBankerCount] = useState<string>("random");
   const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
   const [specialCoverBets, setSpecialCoverBets] = useState<any[]>([]);
 
@@ -353,77 +356,112 @@ export default function App() {
       });
 
     const betsCountToGenerate = coverBetCount || 1;
-    const individualBudget = Math.floor(coverBudget / betsCountToGenerate);
+    const individualBudget = Math.max(10, Math.floor(coverBudget / betsCountToGenerate));
     const newBets: any[] = [];
+    const usedBetKeys = new Set<string>();
 
     for (let i = 0; i < betsCountToGenerate; i++) {
-      let isBanker = true;
-      let bankers: number[] = [];
-      let legs: number[] = [];
+      let attempts = 0;
+      let success = false;
       
-      // Determine bankers for this bet
-      if (shuffledUnselected.length <= 5) {
-        bankers = [...shuffledUnselected];
-      } else {
-        // Pick 5 bankers with wrap-around shift to diversify bankers and partition the risk
-        for (let j = 0; j < 5; j++) {
-          const idx = (i * 5 + j) % shuffledUnselected.length;
-          bankers.push(shuffledUnselected[idx]);
-        }
-      }
-
-      const remainingUnselected = shuffledUnselected.filter(n => !bankers.includes(n));
-      const bCount = bankers.length;
-      
-      let maxAffordableLegs = Math.floor(individualBudget / 10);
-      let maxLegs = 6 - bCount;
-      while (getCombinationsCount(maxLegs + 1, 6 - bCount) * 10 <= individualBudget && maxLegs + 1 <= 49 - bCount) {
-        maxLegs++;
-      }
-
-      if (individualBudget < 10) {
-        bankers = [];
-        legs = shuffledUnselected.slice(0, 6);
-        isBanker = false;
-      } else if (bCount === 0 || bCount >= 6) {
-        bankers = [];
-        legs = shuffledUnselected.slice(0, 6);
-        isBanker = false;
-      } else {
-        let requiredLegs = remainingUnselected;
-        let N = Math.min(requiredLegs.length, maxLegs);
+      while (attempts < 200 && !success) {
+        attempts++;
         
-        if (maxLegs > requiredLegs.length) {
-          const extraCount = maxLegs - requiredLegs.length;
-          legs = [...requiredLegs, ...availableExtras.slice(0, extraCount)];
+        // Decide Banker count (B) - strictly system random (2-4 bankers)
+        const B = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
+        
+        let bankers: number[] = [];
+        let shiftedUnselected = [...unselected];
+        
+        if (attempts > 1) {
+          shiftedUnselected.sort(() => Math.random() - 0.5);
+        }
+        
+        // Select B bankers from unselected numbers using round-robin or random retry
+        if (shiftedUnselected.length >= B) {
+          const startIdx = attempts === 1 ? (i * B) % shiftedUnselected.length : 0;
+          for (let j = 0; j < B; j++) {
+            const idx = (startIdx + j) % shiftedUnselected.length;
+            bankers.push(shiftedUnselected[idx]);
+          }
         } else {
-          legs = requiredLegs.slice(0, N);
+          bankers = [...shiftedUnselected];
+          const needed = B - bankers.length;
+          let extras = [...availableExtras];
+          if (attempts > 1) extras.sort(() => Math.random() - 0.5);
+          bankers.push(...extras.slice(0, needed));
         }
         
-        const neededLegs = 6 - bCount;
-        if (legs.length < neededLegs) {
-          legs.push(...availableExtras.slice(0, neededLegs - legs.length));
+        bankers = Array.from(new Set(bankers)).sort((a, b) => a - b);
+        
+        while (bankers.length < B) {
+          let pool = Array.from({length: 49}, (_, k) => k + 1).filter(n => !bankers.includes(n));
+          const randomNum = pool[Math.floor(Math.random() * pool.length)];
+          bankers.push(randomNum);
+          bankers.sort((a, b) => a - b);
+        }
+        
+        // Legs pool
+        let remainingUnselected = unselected.filter(n => !bankers.includes(n));
+        
+        // Find maximum affordable legs (L)
+        const requiredLegsCount = 6 - B;
+        let L = requiredLegsCount;
+        while (getCombinationsCount(L + 1, requiredLegsCount) * 10 <= individualBudget && (L + 1) <= 49 - B) {
+          L++;
+        }
+        
+        let legs: number[] = [];
+        let remainingPool = [...remainingUnselected];
+        if (attempts > 1 || i > 0) {
+          remainingPool.sort(() => Math.random() - 0.5);
+        }
+        
+        if (remainingPool.length >= L) {
+          legs = remainingPool.slice(0, L);
+        } else {
+          legs = [...remainingPool];
+          const neededLegs = L - legs.length;
+          let extrasPool = availableExtras.filter(n => !bankers.includes(n) && !legs.includes(n));
+          if (attempts > 1) extrasPool.sort(() => Math.random() - 0.5);
+          legs.push(...extrasPool.slice(0, neededLegs));
+        }
+        
+        legs = Array.from(new Set(legs)).filter(n => !bankers.includes(n)).sort((a, b) => a - b);
+        
+        while (legs.length < L) {
+          let pool = Array.from({length: 49}, (_, k) => k + 1).filter(n => !bankers.includes(n) && !legs.includes(n));
+          if (pool.length === 0) break;
+          const randomNum = pool[Math.floor(Math.random() * pool.length)];
+          legs.push(randomNum);
+          legs.sort((a, b) => a - b);
+        }
+        
+        // Unique combination key
+        const key = bankers.join(',') + '|' + legs.join(',');
+        if (!usedBetKeys.has(key)) {
+          usedBetKeys.add(key);
+          success = true;
+          
+          const actualCost = getCombinationsCount(legs.length, 6 - B) * 10;
+          newBets.push({
+            id: `unselected-cover-${Date.now()}-${i}`,
+            numbers: [...bankers, ...legs],
+            explanations: [
+              `全包未選號碼 [第 ${i + 1} 注]：精華 ${B} 膽拖 ${legs.length} 腳，覆蓋未選號。成本 $${actualCost}。`
+            ],
+            type: 'banker',
+            isBankerLegs: true,
+            bankersCount: B
+          });
         }
       }
+    }
 
-      if (isBanker && (bankers.length === 0 || legs.length < 2 || bankers.length + legs.length < 7)) {
-         isBanker = false;
-      }
-
-      const selectedBankers = bankers.sort((a,b)=>a-b);
-      const selectedLegs = legs.sort((a,b)=>a-b);
-      const actualCost = isBanker ? getCombinationsCount(selectedLegs.length, 6 - bCount) * 10 : 10;
-
-      newBets.push({
-        id: `unselected-cover-${Date.now()}-${i}`,
-        numbers: [...selectedBankers, ...selectedLegs],
-        explanations: isBanker 
-          ? [`全包未選號碼 [第 ${i+1} 組]：精華 ${bCount} 膽拖 ${selectedLegs.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
-          : [`單式全覆蓋 [第 ${i+1} 組]：因預算限制，為您挑選了包含未選號碼的組合，成本 $10。`],
-        type: isBanker ? 'banker' : 'standard',
-        isBankerLegs: isBanker,
-        bankersCount: isBanker ? bCount : 0
-      });
+    // If we could only generate some unique bets, generate what is possible
+    if (newBets.length === 0) {
+      toast.error("無法產生任何不重複的拖膽組合，請嘗試調整篩選條件或預算。");
+      return;
     }
 
     // 生成全新一頁
@@ -607,57 +645,113 @@ export default function App() {
 
       let allBets: any[] = [];
 
-      if (aiBankerMode && aiBetCount >= 10) {
-        let bestConfig = { bCount: 2, legsLength: 4, cost: 10 };
-        const configs: {bCount: number, legsLength: number, cost: number}[] = [];
-        for (let b = 1; b <= 4; b++) {
-          for (let l = 6 - b; l <= 20; l++) {
-            const cost = getCombinationsCount(l, 6 - b) * 10;
-            if (cost <= aiBankerBudget && cost >= 20) {
-              configs.push({ bCount: b, legsLength: l, cost });
-            }
-          }
-        }
-        if (configs.length > 0) {
-          configs.sort((a,b) => b.cost - a.cost);
-          const topConfigs = configs.filter(c => c.cost === configs[0].cost);
-          bestConfig = topConfigs[Math.floor(Math.random() * topConfigs.length)];
-        }
-        
-        setAiReasoning([
-          `啟動大數據拖膽模式：因注數較多，AI 已自動改為為您精研「膽拖」配搭，以貼近 $${aiBankerBudget} 預算極大化覆蓋號碼！`,
-          ...explanations,
-        ]);
-        
+      if (aiBankerMode) {
+        // Generate a strong pool of 15 analyzed normal bets
         const rawBets = generateBets({
           ...baseGenerateOptions,
           complexRecentStrategy: { enabled: true, excludeRanges: [{ start: 1, end: 2 }], includeRanges: [] },
-          count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2),
+          count: 15,
           aiStrategy: "balanced",
         });
         
-        const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort((a,b)=>a-b);
-        const targetTotal = bestConfig.bCount + bestConfig.legsLength;
-        const selectedNums = merged.slice(0, targetTotal);
-        while (selectedNums.length < targetTotal) {
-           const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
-           for (const n of nextRanked) {
-             if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
-               selectedNums.push(n);
-             }
-           }
+        // This gives us highly priority-ranked numbers
+        const aiRanking = Array.from(new Set(rawBets.flatMap(b => b.numbers)));
+        // Fill up to 49 numbers just in case
+        while (aiRanking.length < 49) {
+          const randNum = Math.floor(Math.random() * 49) + 1;
+          if (!aiRanking.includes(randNum)) {
+            aiRanking.push(randNum);
+          }
         }
-        selectedNums.sort(() => Math.random() - 0.5);
-        const bCount = bestConfig.bCount;
-        const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
-        const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
-        
-        allBets.push({
-          numbers: [...bankers, ...legs],
-          explanations: [`AI 智能膽拖配搭：精選 ${bankers.length}膽 ${legs.length}腳，結合冷熱分佈機制，成本 $${bestConfig.cost}，大幅提升覆蓋率！`],
-          isBankerLegs: true,
-          bankersCount: bankers.length
-        });
+
+        const betsToGenerate = aiBankerBetCount || 3;
+        const individualBudget = Math.max(10, Math.floor(aiBankerBudget / betsToGenerate));
+        const usedKeySet = new Set<string>();
+
+        setAiReasoning([
+          `啟動大數據拖膽策略：為您精研 ${betsToGenerate} 注拖膽配搭（每注定膽 隨機 2 至 4 個膽），自動分散號碼，貼合總預算 $${aiBankerBudget}！`,
+          ...explanations,
+        ]);
+
+        for (let i = 0; i < betsToGenerate; i++) {
+          let attempts = 0;
+          let success = false;
+          
+          while (attempts < 200 && !success) {
+            attempts++;
+            
+            // Determine B (2 to 4) for this bet - strictly system random
+            const B = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
+
+            // Select B bankers from the prioritized aiRanking
+            let bankers: number[] = [];
+            // We use different starting indexes/offsets to ensure different bets choose different bankers
+            const offset = (i * B + (attempts > 1 ? Math.floor(Math.random() * 49) : 0)) % aiRanking.length;
+            for (let j = 0; j < B; j++) {
+              const idx = (offset + j) % aiRanking.length;
+              bankers.push(aiRanking[idx]);
+            }
+            bankers = Array.from(new Set(bankers)).sort((a, b) => a - b);
+            
+            // Guarantee exactly B bankers
+            let fillIdx = 0;
+            while (bankers.length < B && fillIdx < aiRanking.length) {
+              const cap = aiRanking[fillIdx];
+              if (!bankers.includes(cap)) {
+                bankers.push(cap);
+              }
+              fillIdx++;
+              bankers.sort((a, b) => a - b);
+            }
+
+            // Determine L (legs length) fitting the individualBudget
+            const requiredLegsCount = 6 - B;
+            let L = requiredLegsCount;
+            while (getCombinationsCount(L + 1, requiredLegsCount) * 10 <= individualBudget && (L + 1) <= 49 - B) {
+              L++;
+            }
+
+            // Select L legs from remaining ranking
+            const legsPool = aiRanking.filter(n => !bankers.includes(n));
+            let legs: number[] = [];
+            const legsOffset = (i * L + (attempts > 1 ? Math.floor(Math.random() * 49) : 0)) % legsPool.length;
+            for (let j = 0; j < L; j++) {
+              const idx = (legsOffset + j) % legsPool.length;
+              if (idx < legsPool.length) {
+                legs.push(legsPool[idx]);
+              }
+            }
+            legs = Array.from(new Set(legs)).sort((a, b) => a - b);
+
+            // Fill up to L legs
+            let legFillIdx = 0;
+            while (legs.length < L && legFillIdx < legsPool.length) {
+              const cap = legsPool[legFillIdx];
+              if (!legs.includes(cap)) {
+                legs.push(cap);
+              }
+              legFillIdx++;
+              legs.sort((a, b) => a - b);
+            }
+
+            // Build unique key
+            const key = bankers.join(",") + "|" + legs.join(",");
+            if (!usedKeySet.has(key)) {
+              usedKeySet.add(key);
+              success = true;
+
+              const actualCost = getCombinationsCount(legs.length, requiredLegsCount) * 10;
+              allBets.push({
+                numbers: [...bankers, ...legs],
+                explanations: [
+                  `AI 智能膽拖分流 [第 ${i + 1} 注]：精選 ${B} 膽拖 ${legs.length} 腳，結合大數據深度冷熱分析。成本 $${actualCost}。`
+                ],
+                isBankerLegs: true,
+                bankersCount: B
+              });
+            }
+          }
+        }
       } else {
         for (let s = 0; s < 3; s++) {
           let countForStrategy = counts[s];
@@ -1445,6 +1539,29 @@ export default function App() {
 
         let count = 0;
         for(const bet of bets){
+          // 確保切換回「膽拖」玩法模式 (點選主要的膽拖頁面標籤)
+          const framesPlayType = getFrames(window);
+          for(let {w, d} of framesPlayType) {
+            try {
+              const playTypeXps = [
+                "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
+                "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
+                "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
+                "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
+              ];
+              for(let xp of playTypeXps) {
+                const els = d.evaluate(xp, d, null, 7, null);
+                for(let j=0; j<els.snapshotLength; j++){
+                  const el = els.snapshotItem(j);
+                  if (!isInCart(el, w) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    triggerClick(el, w);
+                  }
+                }
+              }
+            } catch(e){}
+          }
+          await sleep(1000);
+
           for (const section of ['bankers', 'legs']) {
             const arr = bet[section];
             if (!arr || arr.length === 0) continue;
@@ -1508,10 +1625,10 @@ export default function App() {
                         }
                       }
                       if(validEls.length > 0){ 
-                        const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
-                        triggerClick(targetEl, w); 
-                        clicked = true;
-                        break; 
+                         const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                         triggerClick(targetEl, w); 
+                         clicked = true;
+                         break; 
                       }
                   } catch(e){}
               }
@@ -1590,6 +1707,26 @@ export default function App() {
 
         let count = 0;
         for(const bet of bets){
+          // 確保切換回「膽拖」玩法模式 (點選主要的膽拖頁面標籤)
+          try {
+            const playTypeXps = [
+              "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
+              "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
+              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
+              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
+            ];
+            for(let xp of playTypeXps) {
+              const els = document.evaluate(xp, document, null, 7, null);
+              for(let j=0; j<els.snapshotLength; j++){
+                const el = els.snapshotItem(j);
+                if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                  triggerClick(el);
+                }
+              }
+            }
+          } catch(e){}
+          await sleep(1000);
+
           for (const section of ['bankers', 'legs']) {
             const arr = bet[section];
             if (!arr || arr.length === 0) continue;
@@ -3655,14 +3792,14 @@ export default function App() {
                             </span>
                           </Button>
                           <Dialog open={isCoverDialogOpen} onOpenChange={setIsCoverDialogOpen}>
-                            <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] bg-[#f8fafc] text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2 flex flex-col">
+                            <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-md w-[95vw] max-h-[90vh] bg-[#f8fafc] text-black p-0 overflow-hidden text-center top-1/2 -translate-y-1/2 flex flex-col">
                               <DialogHeader className="bg-[#FFE867] border-b-4 border-black p-4 shrink-0">
                                 <DialogTitle className="text-lg sm:text-xl font-black flex items-center justify-center gap-2">
                                   <Sparkles className="w-6 h-6 text-amber-600 animate-pulse" />
                                   自動生成分流拖膽組合
                                 </DialogTitle>
                               </DialogHeader>
-                              <div className="p-6 text-sm font-bold text-zinc-700 text-left leading-relaxed flex-1 space-y-5">
+                              <div className="p-4 sm:p-6 text-sm font-bold text-zinc-700 text-left leading-relaxed flex-1 overflow-y-auto space-y-5 max-h-[calc(90vh-80px)] custom-scrollbar">
                                 
                                 {/* Budget setting section */}
                                 <div className="space-y-2">
@@ -3699,7 +3836,7 @@ export default function App() {
                                   <div className="pt-2 pb-3 px-2">
                                     <Slider
                                       min={1}
-                                      max={6}
+                                      max={10}
                                       step={1}
                                       value={[coverBetCount]}
                                       onValueChange={(val) => setCoverBetCount(Array.isArray(val) ? val[0] : (Number(val) || 3))}
@@ -3707,13 +3844,13 @@ export default function App() {
                                     />
                                     <div className="flex justify-between text-xs font-black text-zinc-500 mt-1 px-1">
                                       <span>1 注</span>
-                                      <span>6 注</span>
+                                      <span>10 注</span>
                                     </div>
                                   </div>
                                 </div>
 
                                 <p className="font-bold text-sm sm:text-base text-zinc-600 bg-zinc-100 p-2.5 rounded-lg border-2 border-black/10 text-center leading-normal">
-                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼，自動分散生成 <span className="font-black text-emerald-600">{coverBetCount} 注</span> 拖膽組合。每注都配搭不同的精華「膽」，大大降低因單一膽不中立刻慘負的風險！
+                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼，自動分散生成 <span className="font-black text-emerald-600">{coverBetCount} 注</span> 拖膽組合。每注設定為 <span className="font-black text-[#10b981]">系統隨機 2 至 4 個膽</span>，極大化預算覆蓋效率！
                                 </p>
 
                                 <Button
@@ -4957,7 +5094,7 @@ export default function App() {
       </div>
 
       <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-md bg-[#f0fdf4] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col mb-[10vh] sm:top-1/2 sm:-translate-y-1/2 overflow-hidden">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] bg-[#f0fdf4] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col sm:top-1/2 sm:-translate-y-1/2 overflow-hidden">
           <DialogHeader className="bg-[#16a34a] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0 text-white">
             <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-white">
               <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -4965,7 +5102,7 @@ export default function App() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="p-4 sm:p-5 flex-1 space-y-6">
+          <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-6 max-h-[calc(90vh-80px)] custom-scrollbar">
             <div className="space-y-4 bg-white border-[3px] border-black p-4 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
@@ -4993,61 +5130,104 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t-2 border-black border-dashed space-y-4">
-                <div className="flex justify-between items-center">
-                  <Label className="font-light text-base">生成注數</Label>
-                  <span className="font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md border border-orange-300">
-                    {aiBetCount} 注
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-zinc-500">1注</span>
-                  <div className="flex-1 px-1">
-                    <Slider
-                      min={1}
-                      max={30}
-                      step={1}
-                      value={[aiBetCount]}
-                      onValueChange={(val) => {
-                        const newValue = Array.isArray(val) ? val[0] : val;
-                        setAiBetCount(newValue as number);
-                      }}
-                      className="cursor-pointer"
-                    />
+              <div className="pt-4 border-t-2 border-black border-dashed flex flex-col gap-4">
+                <div 
+                  className={`font-bold text-black text-[15px] sm:text-base flex items-center gap-2 cursor-pointer p-3 rounded-xl border-4 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all ${aiBankerMode ? 'bg-[#FFE867]' : 'bg-white'}`}
+                  onClick={() => setAiBankerMode(!aiBankerMode)}
+                >
+                  <div className={`w-6 h-6 rounded flex items-center justify-center border-2 border-black shrink-0 transition-colors ${aiBankerMode ? 'bg-black text-[#FFE867]' : 'bg-white'}`}>
+                     {aiBankerMode && <Check className="w-4 h-4 text-white" strokeWidth={5} />}
                   </div>
-                  <span className="text-xs font-bold text-zinc-500">30注</span>
+                  <div>
+                    <div className="font-black text-sm sm:text-[15px] text-zinc-900">自動生成拖膽策略 (節省成本)</div>
+                    <div className="font-normal text-[11px] sm:text-xs text-zinc-600 leading-tight">使用大數據智能「膽拖」配搭，分散投注並提高號碼覆蓋率。</div>
+                  </div>
                 </div>
-                {aiBetCount >= 10 && (
-                  <div className="pt-4 border-t-2 border-black border-dashed">
-                    <div className="flex justify-between items-center mb-1">
-                      <div 
-                        className="font-bold text-black text-[15px] sm:text-base flex items-center gap-2 cursor-pointer"
-                        onClick={() => setAiBankerMode(!aiBankerMode)}
-                      >
-                        <div className={`w-6 h-6 rounded flex items-center justify-center border-2 border-black shrink-0 transition-colors ${aiBankerMode ? 'bg-[#FFD700]' : 'bg-white'}`}>
-                           {aiBankerMode && <Check className="w-4 h-4 text-black" strokeWidth={4} />}
-                        </div>
-                        自動生成拖膽策略 (節省成本)
-                      </div>
-                      {aiBankerMode && (
-                        <div className="font-black text-[15px] sm:text-lg text-black bg-[#FFD700] px-3 py-0.5 border-[2px] sm:border-[3px] border-black rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] shrink-0 whitespace-nowrap min-w-[5rem] text-center">
-                          預算 ${aiBankerBudget}
-                        </div>
-                      )}
+
+                {!aiBankerMode ? (
+                  <div className="space-y-4 pt-2">
+                    <div className="flex justify-between items-center">
+                      <Label className="font-black text-base">生成注數</Label>
+                      <span className="font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md border border-orange-300 text-xs sm:text-sm">
+                        {aiBetCount} 注
+                      </span>
                     </div>
-                    <span className="font-normal text-xs sm:text-[13px] text-zinc-600 pl-8 flex block leading-tight mb-4">當注數大於10注時，由 AI 改為生成一注「膽拖」配搭，以符合預算覆蓋最多號碼。</span>
-                    {aiBankerMode && (
-                      <div className="pl-6 pt-1 pb-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-zinc-500">1注</span>
+                      <div className="flex-1 px-1">
                         <Slider
-                          min={40}
-                          max={300}
-                          step={10}
-                          value={[aiBankerBudget]}
-                          onValueChange={(val) => setAiBankerBudget(Array.isArray(val) ? val[0] : val)}
-                          className="py-1 sm:py-2 cursor-pointer"
+                          min={1}
+                          max={30}
+                          step={1}
+                          value={[aiBetCount]}
+                          onValueChange={(val) => {
+                            const newValue = Array.isArray(val) ? val[0] : val;
+                            setAiBetCount(newValue as number);
+                          }}
+                          className="cursor-pointer"
                         />
                       </div>
-                    )}
+                      <span className="text-xs font-bold text-zinc-500">30注</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 pt-2 bg-[#ffedd5]/30 p-3 sm:p-4 rounded-xl border-2 border-black">
+                    {/* Generative Bettor Slider */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="font-black text-xs sm:text-sm text-zinc-800">生成拖膽注數</Label>
+                        <span className="font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md border border-blue-400 text-xs">
+                          {aiBankerBetCount} 注
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold text-zinc-500">1注</span>
+                        <div className="flex-1 px-1">
+                          <Slider
+                            min={1}
+                            max={10}
+                            step={1}
+                            value={[aiBankerBetCount]}
+                            onValueChange={(val) => {
+                              const newValue = Array.isArray(val) ? val[0] : val;
+                              setAiBankerBetCount(newValue as number);
+                            }}
+                            className="cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-zinc-500">10注</span>
+                      </div>
+                    </div>
+
+                    {/* Budget config */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="font-black text-xs sm:text-sm text-zinc-800">拖膽總預算上限</Label>
+                        <span className="font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-400 text-xs">
+                          ${aiBankerBudget}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold text-zinc-500">$40</span>
+                        <div className="flex-1 px-1">
+                          <Slider
+                            min={40}
+                            max={1000}
+                            step={10}
+                            value={[aiBankerBudget]}
+                            onValueChange={(val) => {
+                              const newValue = Array.isArray(val) ? val[0] : val;
+                              setAiBankerBudget(newValue as number);
+                            }}
+                            className="cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-zinc-500">$1000</span>
+                      </div>
+                    </div>
+                    <p className="font-normal text-[11px] text-zinc-500 leading-tight">
+                      大數據將智能挑選高機率冷熱平衡號碼，自動分散生成共 <span className="font-black text-zinc-800">{aiBankerBetCount} 注</span> 非重複膽拖組合，每注定膽為 <span className="font-black text-[#16a34a]">系統隨機 2 至 4 個</span> 膽！
+                    </p>
                   </div>
                 )}
               </div>
