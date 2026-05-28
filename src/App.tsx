@@ -1377,8 +1377,23 @@ export default function App() {
         const bets = ${betsJson};
         if (!bets || bets.length === 0) { alert("沒有生成拖膽號碼！"); return; }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const isCartWindow = (win) => {
+          try {
+            var name = (win.name || "").toLowerCase();
+            var href = "";
+            try { href = (win.location.href || "").toLowerCase(); } catch(e) {}
+            if (
+              name.includes("cart") || name.includes("slip") || name.includes("basket") || name.includes("reflist") || name.includes("receipt") || name.includes("queue") ||
+              href.includes("cart") || href.includes("slip") || href.includes("basket") || href.includes("reflist") || href.includes("receipt") || href.includes("queue")
+            ) {
+              return true;
+            }
+          } catch(e){}
+          return false;
+        };
         const getFrames = (win) => {
           let res = [];
+          if (isCartWindow(win)) return res;
           try { if(win.document) res.push({w: win, d: win.document}); } catch(e){}
           try {
             for(let i=0; i<win.frames.length; i++){
@@ -1402,7 +1417,8 @@ export default function App() {
             el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
-        const isInCart = (element) => {
+        const isInCart = (element, win) => {
+          if (win && isCartWindow(win)) return true;
           var curr = element;
           while (curr) {
             var cl = "";
@@ -1414,8 +1430,8 @@ export default function App() {
               id = curr.id.toLowerCase();
             }
             if (
-              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
-              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
             ) {
               return true;
             }
@@ -1437,14 +1453,23 @@ export default function App() {
             for(let {w, d} of framesTabs) {
               try {
                 const xps = section === 'bankers' 
-                  ? ["//*[normalize-space(text())='膽']", "//*[normalize-space(text())='Bankers']", "//*[normalize-space(text())='Banker']"] 
-                  : ["//*[normalize-space(text())='配腳']", "//*[normalize-space(text())='Legs']"];
+                  ? [
+                      "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']", 
+                      "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
+                      "//*[normalize-space(text())='Banker' or @value='Banker']",
+                      "//*[normalize-space(.)='膽' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                    ] 
+                  : [
+                      "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
+                      "//*[normalize-space(text())='Legs' or @value='Legs']",
+                      "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                    ];
                   
                 for (let xp of xps) {
                   const els = d.evaluate(xp, d, null, 7, null);
                   for(let i=0; i<els.snapshotLength; i++){
                     const el = els.snapshotItem(i);
-                    if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    if (!isInCart(el, w) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
                       triggerClick(el, w);
                     }
                   }
@@ -1467,7 +1492,7 @@ export default function App() {
                         const el = els.snapshotItem(i);
                         const rect = el.getBoundingClientRect();
                         if(rect.width > 0 && rect.height > 0){
-                          if (isInCart(el)) continue;
+                          if (isInCart(el, w)) continue;
                           let hasChildrenText = false;
                           for(let c of el.children) {
                             if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
@@ -1550,8 +1575,8 @@ export default function App() {
               id = curr.id.toLowerCase();
             }
             if (
-              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
-              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
             ) {
               return true;
             }
@@ -1571,8 +1596,17 @@ export default function App() {
             
             try {
               const xps = section === 'bankers' 
-                ? ["//*[normalize-space(text())='膽']", "//*[normalize-space(text())='Bankers']", "//*[normalize-space(text())='Banker']"] 
-                : ["//*[normalize-space(text())='配腳']", "//*[normalize-space(text())='Legs']"];
+                ? [
+                    "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']", 
+                    "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
+                    "//*[normalize-space(text())='Banker' or @value='Banker']",
+                    "//*[normalize-space(.)='膽' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                  ] 
+                : [
+                    "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
+                    "//*[normalize-space(text())='Legs' or @value='Legs']",
+                    "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                  ];
                 
               for (let xp of xps) {
                 const els = document.evaluate(xp, document, null, 7, null);
@@ -1668,8 +1702,23 @@ export default function App() {
         const bets = ${betsJson};
         if (!bets || bets.length === 0) { alert("沒有生成號碼！"); return; }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const isCartWindow = (win) => {
+          try {
+            var name = (win.name || "").toLowerCase();
+            var href = "";
+            try { href = (win.location.href || "").toLowerCase(); } catch(e) {}
+            if (
+              name.includes("cart") || name.includes("slip") || name.includes("basket") || name.includes("reflist") || name.includes("receipt") || name.includes("queue") ||
+              href.includes("cart") || href.includes("slip") || href.includes("basket") || href.includes("reflist") || href.includes("receipt") || href.includes("queue")
+            ) {
+              return true;
+            }
+          } catch(e){}
+          return false;
+        };
         const getFrames = (win) => {
           let res = [];
+          if (isCartWindow(win)) return res;
           try { if(win.document) res.push({w: win, d: win.document}); } catch(e){}
           try {
             for(let i=0; i<win.frames.length; i++){
@@ -1693,7 +1742,8 @@ export default function App() {
             el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
-        const isInCart = (element) => {
+        const isInCart = (element, win) => {
+          if (win && isCartWindow(win)) return true;
           var curr = element;
           while (curr) {
             var cl = "";
@@ -1705,8 +1755,8 @@ export default function App() {
               id = curr.id.toLowerCase();
             }
             if (
-              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
-              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
             ) {
               return true;
             }
@@ -1735,7 +1785,7 @@ export default function App() {
                       const el = els.snapshotItem(i);
                       const rect = el.getBoundingClientRect();
                       if(rect.width > 0 && rect.height > 0){
-                        if (isInCart(el)) continue;
+                        if (isInCart(el, w)) continue;
                         
                         let hasChildrenText = false;
                         for(let c of el.children) {
@@ -1822,8 +1872,8 @@ export default function App() {
               id = curr.id.toLowerCase();
             }
             if (
-              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
-              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
             ) {
               return true;
             }
