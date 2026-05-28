@@ -1402,6 +1402,30 @@ export default function App() {
             el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
+        const isInCart = (element) => {
+          var curr = element;
+          while (curr) {
+            var cl = "";
+            var id = "";
+            if (curr.className && typeof curr.className === "string") {
+              cl = curr.className.toLowerCase();
+            }
+            if (curr.id && typeof curr.id === "string") {
+              id = curr.id.toLowerCase();
+            }
+            if (
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+            ) {
+              return true;
+            }
+            if (cl.includes("header") || cl.includes("footer") || cl.includes("sidebar") || id.includes("header") || id.includes("footer") || id.includes("sidebar")) {
+              return true;
+            }
+            curr = curr.parentElement;
+          }
+          return false;
+        };
 
         let count = 0;
         for(const bet of bets){
@@ -1420,8 +1444,7 @@ export default function App() {
                   const els = d.evaluate(xp, d, null, 7, null);
                   for(let i=0; i<els.snapshotLength; i++){
                     const el = els.snapshotItem(i);
-                    const isTray = el.closest && (el.closest('.selected-numbers') || el.closest('.infoList_cart_oW2U7') || el.closest('[id*="selected"]'));
-                    if (!isTray && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
                       triggerClick(el, w);
                     }
                   }
@@ -1444,8 +1467,7 @@ export default function App() {
                         const el = els.snapshotItem(i);
                         const rect = el.getBoundingClientRect();
                         if(rect.width > 0 && rect.height > 0){
-                          let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
-                          if (isSelectedTray) continue;
+                          if (isInCart(el)) continue;
                           let hasChildrenText = false;
                           for(let c of el.children) {
                             if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
@@ -1516,6 +1538,30 @@ export default function App() {
             el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
+        const isInCart = (element) => {
+          var curr = element;
+          while (curr) {
+            var cl = "";
+            var id = "";
+            if (curr.className && typeof curr.className === "string") {
+              cl = curr.className.toLowerCase();
+            }
+            if (curr.id && typeof curr.id === "string") {
+              id = curr.id.toLowerCase();
+            }
+            if (
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+            ) {
+              return true;
+            }
+            if (cl.includes("header") || cl.includes("footer") || cl.includes("sidebar") || id.includes("header") || id.includes("footer") || id.includes("sidebar")) {
+              return true;
+            }
+            curr = curr.parentElement;
+          }
+          return false;
+        };
 
         let count = 0;
         for(const bet of bets){
@@ -1532,8 +1578,7 @@ export default function App() {
                 const els = document.evaluate(xp, document, null, 7, null);
                 for(let i=0; i<els.snapshotLength; i++){
                   const el = els.snapshotItem(i);
-                  const isTray = el.closest && (el.closest('.selected-numbers') || el.closest('.infoList_cart_oW2U7') || el.closest('[id*="selected"]'));
-                  if (!isTray && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                  if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
                     triggerClick(el);
                   }
                 }
@@ -1553,8 +1598,7 @@ export default function App() {
                 const el = els.snapshotItem(i);
                 const rect = el.getBoundingClientRect();
                 if(rect.width > 0 && rect.height > 0){
-                  let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
-                  if (isSelectedTray) continue;
+                  if (isInCart(el)) continue;
                   
                   let hasChildrenText = false;
                   for(let c of el.children) {
@@ -1649,6 +1693,30 @@ export default function App() {
             el.dispatchEvent(new win.PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
+        const isInCart = (element) => {
+          var curr = element;
+          while (curr) {
+            var cl = "";
+            var id = "";
+            if (curr.className && typeof curr.className === "string") {
+              cl = curr.className.toLowerCase();
+            }
+            if (curr.id && typeof curr.id === "string") {
+              id = curr.id.toLowerCase();
+            }
+            if (
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+            ) {
+              return true;
+            }
+            if (cl.includes("header") || cl.includes("footer") || cl.includes("sidebar") || id.includes("header") || id.includes("footer") || id.includes("sidebar")) {
+              return true;
+            }
+            curr = curr.parentElement;
+          }
+          return false;
+        };
 
         let count = 0;
         for(const bet of bets){
@@ -1667,8 +1735,7 @@ export default function App() {
                       const el = els.snapshotItem(i);
                       const rect = el.getBoundingClientRect();
                       if(rect.width > 0 && rect.height > 0){
-                        let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
-                        if (isSelectedTray) continue;
+                        if (isInCart(el)) continue;
                         
                         let hasChildrenText = false;
                         for(let c of el.children) {
@@ -1743,6 +1810,30 @@ export default function App() {
             el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
+        const isInCart = (element) => {
+          var curr = element;
+          while (curr) {
+            var cl = "";
+            var id = "";
+            if (curr.className && typeof curr.className === "string") {
+              cl = curr.className.toLowerCase();
+            }
+            if (curr.id && typeof curr.id === "string") {
+              id = curr.id.toLowerCase();
+            }
+            if (
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers")
+            ) {
+              return true;
+            }
+            if (cl.includes("header") || cl.includes("footer") || cl.includes("sidebar") || id.includes("header") || id.includes("footer") || id.includes("sidebar")) {
+              return true;
+            }
+            curr = curr.parentElement;
+          }
+          return false;
+        };
         let count = 0;
         for(const bet of bets){
           for(const num of bet){
@@ -1757,8 +1848,7 @@ export default function App() {
               const el = els.snapshotItem(i);
               const rect = el.getBoundingClientRect();
               if(rect.width > 0 && rect.height > 0){
-                let isSelectedTray = el.closest && (el.closest('.selected-numbers') || el.closest('[id*="selected"]') || el.closest('.infoList_cart_oW2U7'));
-                if (isSelectedTray) continue;
+                if (isInCart(el)) continue;
                 
                 let hasChildrenText = false;
                 for(let c of el.children) {
