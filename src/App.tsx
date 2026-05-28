@@ -1765,8 +1765,9 @@ export default function App() {
     }));
     const betsJson = JSON.stringify(convertedBets);
 
-    const script = `(async function(){
-        const bets = ${betsJson};
+    if (isDesktop) {
+      const script = `(async function(){
+        const bets = \${betsJson};
         if (!bets || bets.length === 0) { alert("沒有生成拖膽號碼！"); return; }
         const showMsg = (msg) => {
           const d = document.createElement("div");
@@ -2006,10 +2007,210 @@ export default function App() {
           if(clickedAdd) count++;
           await sleep(4000);
         }
-        showMsg("拖膽點擊完成！共輸入 " + count + " 注。");
-        setTimeout(() => alert("拖膽點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。"), 1000);
+        showMsg("拖膽電腦版點擊完成！共輸入 " + count + " 注。");
+        setTimeout(() => alert("拖膽電腦版點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。"), 1000);
       })();`;
-    return `javascript:${encodeURIComponent(script)}`;
+      return `javascript:\${encodeURIComponent(script)}`;
+    } else {
+      const script = `(async function(){
+        const bets = \${betsJson};
+        if (!bets || bets.length === 0) {
+          alert("沒有生成號碼！");
+          return;
+        }
+        const showMsg = (msg) => {
+          const d = document.createElement("div");
+          d.textContent = msg;
+          d.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:12px 24px;border-radius:30px;z-index:9999999;font-size:15px;pointer-events:none;font-weight:bold;box-shadow:0 4px 6px rgba(0,0,0,0.3);transition:opacity 0.3s;";
+          document.body.appendChild(d);
+          setTimeout(() => { d.style.opacity = '0'; setTimeout(()=>d.remove(),300); }, 2000);
+        };
+        showMsg("開始自動拖膽點擊(Mobile)...");
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const triggerClick = (el) => {
+          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          const rect = el.getBoundingClientRect();
+          const cx = Math.round(rect.left + rect.width / 2);
+          const cy = Math.round(rect.top + rect.height / 2);
+          
+          try {
+            if (window.TouchEvent) {
+              const opts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy };
+              el.dispatchEvent(new TouchEvent('touchstart', opts));
+              el.dispatchEvent(new TouchEvent('touchend', opts));
+            }
+          } catch(e){}
+
+          el.click();
+          el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+          el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
+          if (window.PointerEvent) {
+            el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
+          }
+        };
+        const isInCart = (element) => {
+          var curr = element;
+          while (curr) {
+            var cl = "";
+            var id = "";
+            if (curr.className && typeof curr.className === "string") {
+              cl = curr.className.toLowerCase();
+            }
+            if (curr.id && typeof curr.id === "string") {
+              id = curr.id.toLowerCase();
+            }
+            if (
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
+            ) {
+              return true;
+            }
+            if (cl.includes("header") || cl.includes("footer") || cl.includes("sidebar") || id.includes("header") || id.includes("footer") || id.includes("sidebar")) {
+              return true;
+            }
+            curr = curr.parentElement;
+          }
+          return false;
+        };
+        let count = 0;
+        for(const bet of bets){
+          showMsg("正在處理第 " + (count+1) + " 注...");
+          // 確保切換回「膽拖」玩法模式
+          try {
+            const playTypeXps = [
+              "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
+              "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
+              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
+              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
+            ];
+            for(let xp of playTypeXps) {
+              const els = document.evaluate(xp, document, null, 7, null);
+              for(let j=0; j<els.snapshotLength; j++){
+                const el = els.snapshotItem(j);
+                if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                  triggerClick(el);
+                }
+              }
+            }
+          } catch(e){}
+          await sleep(1000);
+
+          for (const section of ['bankers', 'legs']) {
+            const arr = bet[section];
+            if (!arr || arr.length === 0) continue;
+            
+            try {
+              const xps = section === 'bankers' 
+                ? [
+                    "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
+                    "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
+                    "//*[normalize-space(text())='Banker' or @value='Banker']",
+                    "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                  ] 
+                : [
+                    "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
+                    "//*[normalize-space(text())='Legs' or @value='Legs']",
+                    "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                  ];
+                
+              for (let xp of xps) {
+                const els = document.evaluate(xp, document, null, 7, null);
+                for(let i=0; i<els.snapshotLength; i++){
+                  const el = els.snapshotItem(i);
+                  if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    triggerClick(el);
+                  }
+                }
+              }
+            } catch(e){}
+            await sleep(800);
+
+            for(const num of arr){
+              const str = num.toString();
+              const pad = num < 10 ? '0'+num : str;
+              let clicked = false;
+              let validEls = [];
+              try {
+                const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
+                const els = document.evaluate(xp, document, null, 7, null);
+                for(let i=0; i<els.snapshotLength; i++){
+                  const el = els.snapshotItem(i);
+                  const rect = el.getBoundingClientRect();
+                  if(rect.width > 0 && rect.height > 0){
+                    if (isInCart(el)) continue;
+                    
+                    let hasChildrenText = false;
+                    for(let c of el.children) {
+                      if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                        hasChildrenText = true;
+                      }
+                    }
+                    if (hasChildrenText) continue;
+                    
+                    if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                      const elClass = (el.className || '').toString().toLowerCase();
+                      if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
+                        validEls.push(el);
+                      }
+                    }
+                  }
+                }
+                
+                if(validEls.length > 0){ 
+                  const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                  triggerClick(targetEl); 
+                  clicked = true;
+                }
+              } catch(e){}
+              
+              if (!clicked) {
+                showMsg("找不到號碼: " + str);
+              }
+              await sleep(600);
+            }
+          }
+          
+          showMsg("添加注項...");
+          await sleep(1500);
+          
+          let clickedAdd = false;
+          try {
+              const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or normalize-space(.)='確定' or normalize-space(.)='加入' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
+              const exactEls = document.evaluate(exactXp, document, null, 7, null);
+              for(let i=exactEls.snapshotLength - 1; i>=0; i--){
+                const el = exactEls.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+                  triggerClick(el); 
+                  clickedAdd = true; 
+                  break; 
+                }
+              }
+          } catch(e){}
+          
+          if (!clickedAdd) {
+            try {
+              const fallbackXp = "//*[contains(text(), '添加到投注區') or contains(text(), '加入注項') or contains(text(), '確定') or contains(text(), '加入')]";
+              const fallbackEls = document.evaluate(fallbackXp, document, null, 7, null);
+              for(let i=fallbackEls.snapshotLength - 1; i>=0; i--){
+                const el = fallbackEls.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+                  triggerClick(el); clickedAdd = true; break; 
+                }
+              }
+            } catch(e){}
+          }
+          
+          if(clickedAdd) count++;
+          await sleep(4000);
+        }
+        showMsg("拖膽手機版點擊完成！共輸入 " + count + " 注。");
+        setTimeout(() => alert("拖膽手機版點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。"), 1000);
+      })();`;
+      return `javascript:\${encodeURIComponent(script)}`;
+    }
   };
 
   const getBookmarkletCode = (isDesktop: boolean = false) => {
@@ -2018,8 +2219,9 @@ export default function App() {
     );
     const betsJson = JSON.stringify(defaultBets.map((b) => b.numbers));
 
-    const script = `(async function(){
-        const bets = ${betsJson};
+    if (isDesktop) {
+      const script = `(async function(){
+        const bets = \${betsJson};
         if (!bets || bets.length === 0) { alert("沒有生成號碼！"); return; }
         const showMsg = (msg) => {
           const d = document.createElement("div");
@@ -2225,10 +2427,178 @@ export default function App() {
           if(clickedAdd) count++;
           await sleep(4000);
         }
-        showMsg("點擊完成！共輸入 " + count + " 注。");
-        setTimeout(() => alert("點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。"), 1000);
+        showMsg("點擊電腦版完成！共輸入 " + count + " 注。");
+        setTimeout(() => alert("點擊電腦版完成！共嘗試輸入 " + count + " 注。請核對投注區內容。"), 1000);
       })();`;
-    return `javascript:${encodeURIComponent(script)}`;
+      return `javascript:\${encodeURIComponent(script)}`;
+    } else {
+      const script = `(async function(){
+        const bets = \${betsJson};
+        if (!bets || bets.length === 0) {
+          alert("沒有生成號碼！");
+          return;
+        }
+        const showMsg = (msg) => {
+          const d = document.createElement("div");
+          d.textContent = msg;
+          d.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:12px 24px;border-radius:30px;z-index:9999999;font-size:15px;pointer-events:none;font-weight:bold;box-shadow:0 4px 6px rgba(0,0,0,0.3);transition:opacity 0.3s;";
+          document.body.appendChild(d);
+          setTimeout(() => { d.style.opacity = '0'; setTimeout(()=>d.remove(),300); }, 2000);
+        };
+        showMsg("開始自動點擊(Mobile)...");
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const triggerClick = (el) => {
+          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          const rect = el.getBoundingClientRect();
+          const cx = Math.round(rect.left + rect.width / 2);
+          const cy = Math.round(rect.top + rect.height / 2);
+          
+          try {
+            if (window.TouchEvent) {
+              const opts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy };
+              el.dispatchEvent(new TouchEvent('touchstart', opts));
+              el.dispatchEvent(new TouchEvent('touchend', opts));
+            }
+          } catch(e){}
+
+          el.click();
+          el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+          el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
+          if (window.PointerEvent) {
+            el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
+          }
+        };
+        const isInCart = (element) => {
+          var curr = element;
+          while (curr) {
+            var cl = "";
+            var id = "";
+            if (curr.className && typeof curr.className === "string") {
+              cl = curr.className.toLowerCase();
+            }
+            if (curr.id && typeof curr.id === "string") {
+              id = curr.id.toLowerCase();
+            }
+            if (
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
+            ) {
+              return true;
+            }
+            if (cl.includes("header") || cl.includes("footer") || cl.includes("sidebar") || id.includes("header") || id.includes("footer") || id.includes("sidebar")) {
+              return true;
+            }
+            curr = curr.parentElement;
+          }
+          return false;
+        };
+        let count = 0;
+        for(const bet of bets){
+          showMsg("正在處理第 " + (count+1) + " 注...");
+          // 確保切換回「單式」玩法模式
+          try {
+            const playTypeXps = [
+              "//*[normalize-space(text())='單式' or @value='單式' or @alt='單式']",
+              "//*[normalize-space(text())='Single' or @value='Single']",
+              "//*[normalize-space(.//text())='單式' and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab'))]"
+            ];
+            for(let xp of playTypeXps) {
+              const els = document.evaluate(xp, document, null, 7, null);
+              for(let j=0; j<els.snapshotLength; j++){
+                const el = els.snapshotItem(j);
+                if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                  triggerClick(el);
+                }
+              }
+            }
+          } catch(e){}
+          await sleep(1000);
+
+          for(const num of bet){
+            const str = num.toString();
+            const pad = num < 10 ? '0'+num : str;
+            let clicked = false;
+            let validEls = [];
+            try {
+              const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
+              const els = document.evaluate(xp, document, null, 7, null);
+              for(let i=0; i<els.snapshotLength; i++){
+                const el = els.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0){
+                  if (isInCart(el)) continue;
+                  
+                  let hasChildrenText = false;
+                  for(let c of el.children) {
+                    if(c.textContent.trim().length > 0 && c.textContent.trim() !== str && c.textContent.trim() !== pad) {
+                      hasChildrenText = true;
+                    }
+                  }
+                  if (hasChildrenText) continue;
+                  
+                  if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                    const elClass = (el.className || '').toString().toLowerCase();
+                    if (elClass.includes('ball') || elClass.includes('num') || el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'BUTTON') {
+                      validEls.push(el);
+                    }
+                  }
+                }
+              }
+              
+              if(validEls.length > 0){ 
+                const targetEl = validEls[0];
+                triggerClick(targetEl); 
+                clicked = true;
+              }
+            } catch(e){}
+              
+            if (!clicked) {
+              showMsg("找不到號碼: " + str);
+            }
+            await sleep(600);
+          }
+          
+          showMsg("添加注項...");
+          await sleep(1500);
+          
+          let clickedAdd = false;
+          try {
+              const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or normalize-space(.)='確定' or normalize-space(.)='加入' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
+              const exactEls = document.evaluate(exactXp, document, null, 7, null);
+              for(let i=exactEls.snapshotLength - 1; i>=0; i--){
+                const el = exactEls.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+                  triggerClick(el); 
+                  clickedAdd = true; 
+                  break; 
+                }
+              }
+          } catch(e){}
+          
+          if (!clickedAdd) {
+            try {
+              const fallbackXp = "//*[contains(text(), '添加到投注區') or contains(text(), '加入注項') or contains(text(), '確定') or contains(text(), '加入')]";
+              const fallbackEls = document.evaluate(fallbackXp, document, null, 7, null);
+              for(let i=fallbackEls.snapshotLength - 1; i>=0; i--){
+                const el = fallbackEls.snapshotItem(i);
+                const rect = el.getBoundingClientRect();
+                if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
+                  triggerClick(el); clickedAdd = true; break; 
+                }
+              }
+            } catch(e){}
+          }
+          
+          if(clickedAdd) count++;
+          await sleep(4000);
+        }
+        showMsg("手機版點擊完成！共嘗試輸入 " + count + " 注。");
+        setTimeout(() => alert("手機版點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。"), 1000);
+      })();`;
+      return `javascript:\${encodeURIComponent(script)}`;
+    }
   };
 
   const handleSubmitToHKJC = () => {
