@@ -1923,7 +1923,12 @@ export default function App() {
                      }
                   }
                   if(validEls.length > 0){ 
-                    targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                    validEls.sort((a, b) => {
+                      const rA = a.getBoundingClientRect();
+                      const rB = b.getBoundingClientRect();
+                      return rA.top - rB.top;
+                    });
+                    targetEl = section === 'bankers' ? validEls[0] : (validEls.length > 1 ? validEls[1] : validEls[0]);
                     targetWin = w;
                     break;
                   }
@@ -2145,7 +2150,12 @@ export default function App() {
                 }
                 
                 if(validEls.length > 0){ 
-                  const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                  validEls.sort((a, b) => {
+                    const rA = a.getBoundingClientRect();
+                    const rB = b.getBoundingClientRect();
+                    return rA.top - rB.top;
+                  });
+                  const targetEl = validEls[0];
                   triggerClick(targetEl); 
                   clicked = true;
                 }
