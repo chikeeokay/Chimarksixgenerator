@@ -209,7 +209,6 @@ export default function App() {
   const [coverUnselectedMode, setCoverUnselectedMode] = useState(false);
   const [coverBudget, setCoverBudget] = useState(300);
   const [coverBetCount, setCoverBetCount] = useState(3);
-  const [coverBankerCount, setCoverBankerCount] = useState<string>("random");
   const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
   const [specialCoverBets, setSpecialCoverBets] = useState<any[]>([]);
 
@@ -354,118 +353,77 @@ export default function App() {
       });
 
     const betsCountToGenerate = coverBetCount || 1;
-    const individualBudget = Math.max(10, Math.floor(coverBudget / betsCountToGenerate));
+    const individualBudget = Math.floor(coverBudget / betsCountToGenerate);
     const newBets: any[] = [];
-    const usedBetKeys = new Set<string>();
 
     for (let i = 0; i < betsCountToGenerate; i++) {
-      let attempts = 0;
-      let success = false;
+      let isBanker = true;
+      let bankers: number[] = [];
+      let legs: number[] = [];
       
-      while (attempts < 200 && !success) {
-        attempts++;
-        
-        // Decide Banker count (B)
-        let B = 3;
-        if (coverBankerCount === "random") {
-          B = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
-        } else {
-          B = parseInt(coverBankerCount) || 3;
-        }
-        B = Math.max(2, Math.min(4, B)); // Keep within 2-4
-        
-        let bankers: number[] = [];
-        let shiftedUnselected = [...unselected];
-        
-        if (attempts > 1) {
-          shiftedUnselected.sort(() => Math.random() - 0.5);
-        }
-        
-        // Select B bankers from unselected numbers using round-robin or random retry
-        if (shiftedUnselected.length >= B) {
-          const startIdx = attempts === 1 ? (i * B) % shiftedUnselected.length : 0;
-          for (let j = 0; j < B; j++) {
-            const idx = (startIdx + j) % shiftedUnselected.length;
-            bankers.push(shiftedUnselected[idx]);
-          }
-        } else {
-          bankers = [...shiftedUnselected];
-          const needed = B - bankers.length;
-          let extras = [...availableExtras];
-          if (attempts > 1) extras.sort(() => Math.random() - 0.5);
-          bankers.push(...extras.slice(0, needed));
-        }
-        
-        bankers = Array.from(new Set(bankers)).sort((a, b) => a - b);
-        
-        while (bankers.length < B) {
-          let pool = Array.from({length: 49}, (_, k) => k + 1).filter(n => !bankers.includes(n));
-          const randomNum = pool[Math.floor(Math.random() * pool.length)];
-          bankers.push(randomNum);
-          bankers.sort((a, b) => a - b);
-        }
-        
-        // Legs pool
-        let remainingUnselected = unselected.filter(n => !bankers.includes(n));
-        
-        // Find maximum affordable legs (L)
-        const requiredLegsCount = 6 - B;
-        let L = requiredLegsCount;
-        while (getCombinationsCount(L + 1, requiredLegsCount) * 10 <= individualBudget && (L + 1) <= 49 - B) {
-          L++;
-        }
-        
-        let legs: number[] = [];
-        let remainingPool = [...remainingUnselected];
-        if (attempts > 1 || i > 0) {
-          remainingPool.sort(() => Math.random() - 0.5);
-        }
-        
-        if (remainingPool.length >= L) {
-          legs = remainingPool.slice(0, L);
-        } else {
-          legs = [...remainingPool];
-          const neededLegs = L - legs.length;
-          let extrasPool = availableExtras.filter(n => !bankers.includes(n) && !legs.includes(n));
-          if (attempts > 1) extrasPool.sort(() => Math.random() - 0.5);
-          legs.push(...extrasPool.slice(0, neededLegs));
-        }
-        
-        legs = Array.from(new Set(legs)).filter(n => !bankers.includes(n)).sort((a, b) => a - b);
-        
-        while (legs.length < L) {
-          let pool = Array.from({length: 49}, (_, k) => k + 1).filter(n => !bankers.includes(n) && !legs.includes(n));
-          if (pool.length === 0) break;
-          const randomNum = pool[Math.floor(Math.random() * pool.length)];
-          legs.push(randomNum);
-          legs.sort((a, b) => a - b);
-        }
-        
-        // Unique combination key
-        const key = bankers.join(',') + '|' + legs.join(',');
-        if (!usedBetKeys.has(key)) {
-          usedBetKeys.add(key);
-          success = true;
-          
-          const actualCost = getCombinationsCount(legs.length, 6 - B) * 10;
-          newBets.push({
-            id: `unselected-cover-${Date.now()}-${i}`,
-            numbers: [...bankers, ...legs],
-            explanations: [
-              `全包未選號碼 [第 ${i + 1} 注]：精華 ${B} 膽拖 ${legs.length} 腳，覆蓋未選號。成本 $${actualCost}。`
-            ],
-            type: 'banker',
-            isBankerLegs: true,
-            bankersCount: B
-          });
+      // Determine bankers for this bet
+      if (shuffledUnselected.length <= 5) {
+        bankers = [...shuffledUnselected];
+      } else {
+        // Pick 5 bankers with wrap-around shift to diversify bankers and partition the risk
+        for (let j = 0; j < 5; j++) {
+          const idx = (i * 5 + j) % shuffledUnselected.length;
+          bankers.push(shuffledUnselected[idx]);
         }
       }
-    }
 
-    // If we could only generate some unique bets, generate what is possible
-    if (newBets.length === 0) {
-      toast.error("無法產生任何不重複的拖膽組合，請嘗試調整篩選條件或預算。");
-      return;
+      const remainingUnselected = shuffledUnselected.filter(n => !bankers.includes(n));
+      const bCount = bankers.length;
+      
+      let maxAffordableLegs = Math.floor(individualBudget / 10);
+      let maxLegs = 6 - bCount;
+      while (getCombinationsCount(maxLegs + 1, 6 - bCount) * 10 <= individualBudget && maxLegs + 1 <= 49 - bCount) {
+        maxLegs++;
+      }
+
+      if (individualBudget < 10) {
+        bankers = [];
+        legs = shuffledUnselected.slice(0, 6);
+        isBanker = false;
+      } else if (bCount === 0 || bCount >= 6) {
+        bankers = [];
+        legs = shuffledUnselected.slice(0, 6);
+        isBanker = false;
+      } else {
+        let requiredLegs = remainingUnselected;
+        let N = Math.min(requiredLegs.length, maxLegs);
+        
+        if (maxLegs > requiredLegs.length) {
+          const extraCount = maxLegs - requiredLegs.length;
+          legs = [...requiredLegs, ...availableExtras.slice(0, extraCount)];
+        } else {
+          legs = requiredLegs.slice(0, N);
+        }
+        
+        const neededLegs = 6 - bCount;
+        if (legs.length < neededLegs) {
+          legs.push(...availableExtras.slice(0, neededLegs - legs.length));
+        }
+      }
+
+      if (isBanker && (bankers.length === 0 || legs.length < 2 || bankers.length + legs.length < 7)) {
+         isBanker = false;
+      }
+
+      const selectedBankers = bankers.sort((a,b)=>a-b);
+      const selectedLegs = legs.sort((a,b)=>a-b);
+      const actualCost = isBanker ? getCombinationsCount(selectedLegs.length, 6 - bCount) * 10 : 10;
+
+      newBets.push({
+        id: `unselected-cover-${Date.now()}-${i}`,
+        numbers: [...selectedBankers, ...selectedLegs],
+        explanations: isBanker 
+          ? [`全包未選號碼 [第 ${i+1} 組]：精華 ${bCount} 膽拖 ${selectedLegs.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
+          : [`單式全覆蓋 [第 ${i+1} 組]：因預算限制，為您挑選了包含未選號碼的組合，成本 $10。`],
+        type: isBanker ? 'banker' : 'standard',
+        isBankerLegs: isBanker,
+        bankersCount: isBanker ? bCount : 0
+      });
     }
 
     // 生成全新一頁
@@ -1487,29 +1445,6 @@ export default function App() {
 
         let count = 0;
         for(const bet of bets){
-          // 確保切換回「膽拖」玩法模式 (點選主要的膽拖頁面標籤)
-          const framesPlayType = getFrames(window);
-          for(let {w, d} of framesPlayType) {
-            try {
-              const playTypeXps = [
-                "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
-                "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
-                "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
-                "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
-              ];
-              for(let xp of playTypeXps) {
-                const els = d.evaluate(xp, d, null, 7, null);
-                for(let j=0; j<els.snapshotLength; j++){
-                  const el = els.snapshotItem(j);
-                  if (!isInCart(el, w) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
-                    triggerClick(el, w);
-                  }
-                }
-              }
-            } catch(e){}
-          }
-          await sleep(1000);
-
           for (const section of ['bankers', 'legs']) {
             const arr = bet[section];
             if (!arr || arr.length === 0) continue;
@@ -1573,10 +1508,10 @@ export default function App() {
                         }
                       }
                       if(validEls.length > 0){ 
-                         const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
-                         triggerClick(targetEl, w); 
-                         clicked = true;
-                         break; 
+                        const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                        triggerClick(targetEl, w); 
+                        clicked = true;
+                        break; 
                       }
                   } catch(e){}
               }
@@ -1655,26 +1590,6 @@ export default function App() {
 
         let count = 0;
         for(const bet of bets){
-          // 確保切換回「膽拖」玩法模式 (點選主要的膽拖頁面標籤)
-          try {
-            const playTypeXps = [
-              "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
-              "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
-              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']",
-              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]"
-            ];
-            for(let xp of playTypeXps) {
-              const els = document.evaluate(xp, document, null, 7, null);
-              for(let j=0; j<els.snapshotLength; j++){
-                const el = els.snapshotItem(j);
-                if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
-                  triggerClick(el);
-                }
-              }
-            }
-          } catch(e){}
-          await sleep(1000);
-
           for (const section of ['bankers', 'legs']) {
             const arr = bet[section];
             if (!arr || arr.length === 0) continue;
@@ -3784,7 +3699,7 @@ export default function App() {
                                   <div className="pt-2 pb-3 px-2">
                                     <Slider
                                       min={1}
-                                      max={10}
+                                      max={6}
                                       step={1}
                                       value={[coverBetCount]}
                                       onValueChange={(val) => setCoverBetCount(Array.isArray(val) ? val[0] : (Number(val) || 3))}
@@ -3792,42 +3707,13 @@ export default function App() {
                                     />
                                     <div className="flex justify-between text-xs font-black text-zinc-500 mt-1 px-1">
                                       <span>1 注</span>
-                                      <span>10 注</span>
+                                      <span>6 注</span>
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* Custom Banker Count configuration */}
-                                <div className="space-y-2">
-                                  <div className="font-black text-black text-[15px] sm:text-lg flex justify-between items-center bg-white p-3 sm:p-4 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                     <span>定膽數量</span>
-                                     <span className="bg-blue-500 text-white px-3 py-1 border-[3px] border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                        {coverBankerCount === "random" ? "隨機 2 - 4" : `${coverBankerCount} 膽`}
-                                      </span>
-                                  </div>
-                                  <div className="grid grid-cols-4 gap-1.5 pt-1">
-                                    {["random", "2", "3", "4"].map((opt) => (
-                                      <button
-                                        key={opt}
-                                        type="button"
-                                        onClick={() => setCoverBankerCount(opt)}
-                                        className={`
-                                          py-2 text-[12px] sm:text-[13px] font-black rounded-xl border-[3.5px] border-black transition-all
-                                          shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]
-                                          ${coverBankerCount === opt 
-                                            ? "bg-[#FFE867] text-black" 
-                                            : "bg-white text-zinc-700 hover:bg-zinc-100"
-                                          }
-                                        `}
-                                      >
-                                        {opt === "random" ? "隨機(2-4)" : `${opt} 膽`}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-
                                 <p className="font-bold text-sm sm:text-base text-zinc-600 bg-zinc-100 p-2.5 rounded-lg border-2 border-black/10 text-center leading-normal">
-                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼，自動分散生成 <span className="font-black text-emerald-600">{coverBetCount} 注</span> 拖膽組合。每注設定為 <span className="font-black text-blue-600">{coverBankerCount === "random" ? "隨機 2 至 4 個膽" : `${coverBankerCount} 個膽`}</span>，極大化預算覆蓋效率！
+                                  即將為剩餘的 <span className="font-black text-black">{unselectedCount}</span> 個未選號碼，自動分散生成 <span className="font-black text-emerald-600">{coverBetCount} 注</span> 拖膽組合。每注都配搭不同的精華「膽」，大大降低因單一膽不中立刻慘負的風險！
                                 </p>
 
                                 <Button
