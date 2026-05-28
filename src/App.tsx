@@ -153,7 +153,33 @@ export default function App() {
   const [use3Combos, setUse3Combos] = useState(false);
   const [combo3Count, setCombo3Count] = useState<number>(1);
   const [showUnseenNumbers, setShowUnseenNumbers] = useState(false);
-  const [generatedBets, setGeneratedBets] = useState<import('@/lib/marksix').GeneratedBet[]>([]);
+  const [generatedBets, setGeneratedBetsInternal] = useState<import('@/lib/marksix').GeneratedBet[]>([]);
+  const setGeneratedBets = (val: import('@/lib/marksix').GeneratedBet[] | ((prev: import('@/lib/marksix').GeneratedBet[]) => import('@/lib/marksix').GeneratedBet[])) => {
+    setGeneratedBetsInternal(prev => {
+      const raw = typeof val === 'function' ? val(prev) : val;
+      if (!raw) return [];
+      const seen = new Set<string>();
+      const unique: import('@/lib/marksix').GeneratedBet[] = [];
+      for (const bet of raw) {
+        if (!bet || !bet.numbers) continue;
+        let key = "";
+        if (bet.isBankerLegs && bet.bankersCount) {
+          // Normalize banker legs key
+          const bk = [...bet.numbers.slice(0, bet.bankersCount)].sort((a: any, b: any) => a - b).join(",");
+          const lg = [...bet.numbers.slice(bet.bankersCount)].sort((a: any, b: any) => a - b).join(",");
+          key = `banker:${bk}|legs:${lg}`;
+        } else {
+          // Normalize standard bet key
+          key = `std:${[...bet.numbers].sort((a: any, b: any) => a - b).join(",")}`;
+        }
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(bet);
+        }
+      }
+      return unique;
+    });
+  };
   const [undoStack, setUndoStack] = useState<{index: number, bet: import('@/lib/marksix').GeneratedBet}[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [analysisDrawIndex, setAnalysisDrawIndex] = useState<number | null>(null);
