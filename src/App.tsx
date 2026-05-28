@@ -2009,7 +2009,9 @@ export default function App() {
         showMsg("開始自動拖膽點擊(Mobile)...");
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const triggerClick = (el) => {
-          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          try { el.scrollIntoView({block: 'center', behavior: 'auto'}); } catch(e) {
+            try { el.scrollIntoView(); } catch(err){}
+          }
           const rect = el.getBoundingClientRect();
           const cx = Math.round(rect.left + rect.width / 2);
           const cy = Math.round(rect.top + rect.height / 2);
@@ -2059,25 +2061,32 @@ export default function App() {
         let count = 0;
         for(const bet of bets){
           showMsg("正在處理第 " + (count+1) + " 注...");
-          try {
-            const playTypeXps = [
-              "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]",
-              "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
-              "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
-              "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']"
-            ];
-            for(let xp of playTypeXps) {
-              const els = document.evaluate(xp, document, null, 7, null);
-              for(let j=0; j<els.snapshotLength; j++){
-                const el = els.snapshotItem(j);
-                const rect = el.getBoundingClientRect();
-                if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML' && rect.height > 0) {
-                  triggerClick(el);
+          const isBankerPage = window.location.href.toLowerCase().includes('/banker');
+          if (!isBankerPage) {
+            try {
+              const playTypeXps = [
+                "//*[normalize-space(.)='膽拖' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab'))]",
+                "//*[normalize-space(text())='膽拖' or @value='膽拖' or @alt='膽拖']",
+                "//*[normalize-space(text())='Banker-Legs' or @value='Banker-Legs']",
+                "//*[normalize-space(text())='Bankers-Legs' or @value='Bankers-Legs']"
+              ];
+              let clickedPlay = false;
+              for(let xp of playTypeXps) {
+                const els = document.evaluate(xp, document, null, 7, null);
+                for(let j=0; j<els.snapshotLength; j++){
+                  const el = els.snapshotItem(j);
+                  const rect = el.getBoundingClientRect();
+                  if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML' && rect.height > 0) {
+                    triggerClick(el);
+                    clickedPlay = true;
+                    break;
+                  }
                 }
+                if (clickedPlay) break;
               }
-            }
-          } catch(e){}
-          await sleep(1000);
+            } catch(e){}
+            await sleep(1000);
+          }
 
           for (const section of ['bankers', 'legs']) {
             const arr = bet[section];
@@ -2086,15 +2095,12 @@ export default function App() {
             try {
               const xps = section === 'bankers' 
                 ? [
-                    "//*[contains(translate(normalize-space(.), ' ', ''), '膽') and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn')) and not(contains(normalize-space(.), '拖'))]",
-                    "//*[(contains(normalize-space(.), '膽') or contains(normalize-space(.), '膽拖')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
-                    "//*[normalize-space(text())='膽' or @value='膽' or @alt='膽']",
-                    "//*[contains(text(), '膽')]"
+                    "//*[(normalize-space(.)='膽拖' or normalize-space(.)='膽') and not(ancestor::*[contains(@class, 'cart') or contains(@class, 'slip') or contains(@id, 'cart') or contains(@id, 'slip')])]",
+                    "//*[contains(normalize-space(.), '膽') and not(contains(normalize-space(.), '拖')) and (self::a or self::button or contains(@class, 'tab') or contains(@class, 'btn'))]"
                   ] 
                 : [
-                    "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽')) and (self::a or self::button or self::input or @role='button' or contains(@class, 'tab') or contains(@class, 'btn'))]",
-                    "//*[normalize-space(text())='配腳' or normalize-space(text())='腳' or @value='配腳' or @alt='配腳']",
-                    "//*[(contains(normalize-space(.), '配腳') or contains(normalize-space(.), '腳') or contains(normalize-space(.), '拖')) and not(contains(normalize-space(.), '膽'))]"
+                    "//*[(normalize-space(.)='配腳' or normalize-space(.)='腳') and not(ancestor::*[contains(@class, 'cart') or contains(@class, 'slip') or contains(@id, 'cart') or contains(@id, 'slip')])]",
+                    "//*[contains(normalize-space(.), '配腳') and (self::a or self::button or contains(@class, 'tab') or contains(@class, 'btn'))]"
                   ];
                 
               for (let xp of xps) {
@@ -2106,6 +2112,7 @@ export default function App() {
                   if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML' && rect.height > 0) {
                     triggerClick(el);
                     clickedTab = true;
+                    break;
                   }
                 }
                 if (clickedTab) break;
