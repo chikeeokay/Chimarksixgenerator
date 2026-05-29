@@ -1463,29 +1463,34 @@ export default function App() {
               try {
                 const xps = section === 'bankers' 
                   ? [
+                      "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖' or normalize-space(.)='膽組' or normalize-space(.)='選擇膽') and (self::a or self::button or self::span or self::div or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item') or contains(@class, 'select'))]",
                       "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
                       "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
-                      "//*[normalize-space(text())='Banker' or @value='Banker']",
-                      "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                      "//*[normalize-space(text())='Banker' or @value='Banker']"
                     ] 
                   : [
+                      "//*[(normalize-space(.)='配腳' or normalize-space(.)='腳' or normalize-space(.)='選擇配腳') and (self::a or self::button or self::span or self::div or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item') or contains(@class, 'select'))]",
                       "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
-                      "//*[normalize-space(text())='Legs' or @value='Legs']",
-                      "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                      "//*[normalize-space(text())='Legs' or @value='Legs']"
                     ];
                   
+                let clickedTab = false;
                 for (let xp of xps) {
                   const els = d.evaluate(xp, d, null, 7, null);
                   for(let i=0; i<els.snapshotLength; i++){
                     const el = els.snapshotItem(i);
-                    if (!isInCart(el, w) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0 && !isInCart(el, w) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
                       triggerClick(el, w);
+                      clickedTab = true;
+                      break;
                     }
                   }
+                  if (clickedTab) break;
                 }
               } catch(e){}
             }
-            await sleep(500);
+            await sleep(600);
 
             for(const num of arr){
               const str = num.toString();
@@ -1496,7 +1501,7 @@ export default function App() {
                   try {
                       const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
                       const els = d.evaluate(xp, d, null, 7, null);
-                      let validEls = [];
+                      let targetEl = null;
                       for(let i=0; i<els.snapshotLength; i++){
                         const el = els.snapshotItem(i);
                         const rect = el.getBoundingClientRect();
@@ -1510,14 +1515,14 @@ export default function App() {
                           }
                           if (hasChildrenText) continue;
                           if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                              targetEl = el;
                               if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
-                                validEls.push(el);
+                                break;
                               }
                           }
                         }
                       }
-                      if(validEls.length > 0){ 
-                        const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+                      if(targetEl){ 
                         triggerClick(targetEl, w); 
                         clicked = true;
                         break; 
@@ -1525,18 +1530,18 @@ export default function App() {
                   } catch(e){}
               }
               if (!clicked) console.log("找不到號碼: " + str);
-              await sleep(600);
+              await sleep(700);
             }
           }
-          await sleep(1500);
+          await sleep(2000);
           
           let clickedAdd = false;
           const frames2 = getFrames(window);
           for(let {w, d} of frames2) {
               try {
-                const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項']";
+                const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
                 const exactEls = d.evaluate(exactXp, d, null, 7, null);
-                for(let i=0; i<exactEls.snapshotLength; i++){
+                for(let i=exactEls.snapshotLength - 1; i>=0; i--){
                   const el = exactEls.snapshotItem(i);
                   const rect = el.getBoundingClientRect();
                   if(rect.width > 0 && rect.height > 0 && el.tagName !== 'BODY' && el.tagName !== 'HTML'){ 
@@ -1546,10 +1551,14 @@ export default function App() {
                 if(clickedAdd) break;
               } catch(e){}
           }
-          if(clickedAdd) count++;
-          await sleep(4000);
+          if(clickedAdd) {
+            count++;
+            await sleep(5000);
+          } else {
+            await sleep(2500);
+          }
         }
-        alert("拖膽腳本點擊完成！共輸入 " + count + " 注。請核對投注區內容。");
+        alert("拖膽電腦版點擊完成！共輸入 " + count + " 注。請核對投注區內容。");
       })();`;
       return `javascript:${encodeURIComponent(script)}`;
     } else {
@@ -1569,7 +1578,7 @@ export default function App() {
           }
           if(window.PointerEvent){
             el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
-            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, cy: cy}));
           }
         };
         const isInCart = (element) => {
@@ -1606,28 +1615,33 @@ export default function App() {
             try {
               const xps = section === 'bankers' 
                 ? [
+                    "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖' or normalize-space(.)='膽組' or normalize-space(.)='選擇膽') and (self::a or self::button or self::span or self::div or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item') or contains(@class, 'select'))]",
                     "//*[normalize-space(text())='膽' or normalize-space(text())='膽拖' or @value='膽' or @value='膽拖' or @alt='膽' or @alt='膽拖']", 
                     "//*[normalize-space(text())='Bankers' or @value='Bankers']", 
-                    "//*[normalize-space(text())='Banker' or @value='Banker']",
-                    "//*[(normalize-space(.)='膽' or normalize-space(.)='膽拖') and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                    "//*[normalize-space(text())='Banker' or @value='Banker']"
                   ] 
                 : [
+                    "//*[(normalize-space(.)='配腳' or normalize-space(.)='腳' or normalize-space(.)='選擇配腳') and (self::a or self::button or self::span or self::div or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item') or contains(@class, 'select'))]",
                     "//*[normalize-space(text())='配腳' or @value='配腳' or @alt='配腳']", 
-                    "//*[normalize-space(text())='Legs' or @value='Legs']",
-                    "//*[normalize-space(.)='配腳' and (self::a or self::button or self::input or @role='button' or contains(@class, 'btn') or contains(@class, 'tab') or contains(@class, 'item'))]"
+                    "//*[normalize-space(text())='Legs' or @value='Legs']"
                   ];
                 
+              let clickedTab = false;
               for (let xp of xps) {
                 const els = document.evaluate(xp, document, null, 7, null);
                 for(let i=0; i<els.snapshotLength; i++){
                   const el = els.snapshotItem(i);
-                  if (!isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0 && !isInCart(el) && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
                     triggerClick(el);
+                    clickedTab = true;
+                    break;
                   }
                 }
+                if (clickedTab) break;
               }
             } catch(e){}
-            await sleep(500);
+            await sleep(600);
 
             for(const num of arr){
               const str = num.toString();
@@ -1635,7 +1649,7 @@ export default function App() {
               const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
               const els = document.evaluate(xp, document, null, 7, null);
               let clicked = false;
-              let validEls = [];
+              let targetEl = null;
 
               for(let i=0; i<els.snapshotLength; i++){
                 const el = els.snapshotItem(i);
@@ -1652,20 +1666,20 @@ export default function App() {
                   if (hasChildrenText) continue;
                   
                   if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
+                      targetEl = el;
                       if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
-                        validEls.push(el);
+                        break;
                       }
                   }
                 }
               }
-              if(validEls.length > 0){ 
-                const targetEl = section === 'bankers' ? validEls[0] : validEls[validEls.length - 1];
+              if(targetEl){ 
                 triggerClick(targetEl); 
                 clicked = true;
               }
 
               if (!clicked) console.log("找不到號碼: " + str);
-              await sleep(600);
+              await sleep(700);
             }
           }
           await sleep(1500);
@@ -2988,30 +3002,56 @@ export default function App() {
                   />
 
                   {generatedBets.length > 0 && !generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
-                    <Button
-                      variant="outline"
-                      className="flex-1 max-w-sm bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={() => {
-                        const evt = new MouseEvent("click", { bubbles: true });
-                        document.querySelector('[data-automation-id="hkjc-desktop-btn"]')?.dispatchEvent(evt);
-                      }}
-                    >
-                      <MonitorUp className="w-4 h-4 mr-1.5" />
-                      自動點擊 HKJC 腳本
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full justify-center">
+                      <Button
+                        variant="outline"
+                        className="flex-1 max-w-sm bg-[#fca5a5] hover:bg-[#f87171] text-black h-auto py-2.5 px-4 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => {
+                          const evt = new MouseEvent("click", { bubbles: true });
+                          document.querySelector('[data-automation-id="hkjc-mobile-btn"]')?.dispatchEvent(evt);
+                        }}
+                      >
+                        <Smartphone className="w-4 h-4 mr-1.5" />
+                        自動按球(手機版) 教學
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 max-w-sm bg-[#FFE867] hover:bg-[#FFD700] text-black h-auto py-2.5 px-4 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => {
+                          const evt = new MouseEvent("click", { bubbles: true });
+                          document.querySelector('[data-automation-id="hkjc-desktop-btn"]')?.dispatchEvent(evt);
+                        }}
+                      >
+                        <MonitorUp className="w-4 h-4 mr-1.5" />
+                        自動點擊(電腦版) 教學
+                      </Button>
+                    </div>
                   )}
                   {generatedBets.length > 0 && generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
-                    <Button
-                      variant="outline"
-                      className="flex-1 max-w-sm bg-[#60a5fa] hover:bg-[#3b82f6] text-black h-auto py-1.5 px-3 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={() => {
-                        const evt = new MouseEvent("click", { bubbles: true });
-                        document.querySelector('[data-automation-id="hkjc-banker-desktop-btn"]')?.dispatchEvent(evt);
-                      }}
-                    >
-                      <Sparkles className="w-4 h-4 mr-1.5" />
-                      自動點擊(拖膽PC) 腳本
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full justify-center">
+                      <Button
+                        variant="outline"
+                        className="flex-1 max-w-sm bg-[#f87171] hover:bg-[#ef4444] text-black h-auto py-2.5 px-4 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => {
+                          const evt = new MouseEvent("click", { bubbles: true });
+                          document.querySelector('[data-automation-id="hkjc-banker-mobile-btn"]')?.dispatchEvent(evt);
+                        }}
+                      >
+                        <Smartphone className="w-4 h-4 mr-1.5" />
+                        自動拖膽(手機版) 教學
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 max-w-sm bg-[#60a5fa] hover:bg-[#3b82f6] text-black h-auto py-2.5 px-4 text-sm font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => {
+                          const evt = new MouseEvent("click", { bubbles: true });
+                          document.querySelector('[data-automation-id="hkjc-banker-desktop-btn"]')?.dispatchEvent(evt);
+                        }}
+                      >
+                        <Sparkles className="w-4 h-4 mr-1.5" />
+                        自動點擊(拖膽PC) 教學
+                      </Button>
+                    </div>
                   )}
                 </div>
               </CardFooter>
@@ -3162,7 +3202,6 @@ export default function App() {
                                     if (color === "red") bgColor = "bg-[#FF9999]";
                                     else if (color === "blue") bgColor = "bg-[#99CCFF]";
                                     else if (color === "green") bgColor = "bg-[#99FF99]";
-                                    
                                     if (isExcluded) {
                                       return (
                                         <button
@@ -3220,20 +3259,6 @@ export default function App() {
                   })()}
 
                   <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center">
-                      <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#ffd8a8]"
-                      onClick={() => {
-                        setGeneratedBets([]);
-                        setSpecialCoverBets([]);
-                        setUndoStack([]);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                    >
-                      <Home className="w-3.5 h-3.5 mr-1" />
-                      回到首頁
-                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -3310,75 +3335,88 @@ export default function App() {
                     {!generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
                       <Dialog>
                         <DialogTrigger render={
-                        <Button
-                          data-automation-id="hkjc-desktop-btn"
-                          variant="outline"
-                          size="sm"
-                          className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#a5b4fc] text-black"
-                        />
-                      }>
-                        <Sparkles className="w-3.5 h-3.5 mr-1" />
-                        自動點擊 HKJC
-                      </DialogTrigger>
-                      <DialogContent className="border-4 border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
-                          <DialogHeader>
-                            <DialogTitle className="text-xl sm:text-2xl font-black">自動點擊 HKJC 教學</DialogTitle>
-                            <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
-                              <span>由於瀏覽器安全限制，我們無法直接控制 HKJC 網頁。請使用以下「自動點擊腳本」來代替手動按球。</span>
-                              <span className="text-[#3b82f6] bg-[#3b82f6]/10 p-2 rounded-lg border-2 border-[#3b82f6]/20">此教學專為電腦版瀏覽器設計。如需手機版，請關閉此視窗並點擊「自動點擊 HKJC (手機版)」按鈕。</span>
-                            </DialogDescription>
-                          </DialogHeader>
-                          
-                          <div className="w-full mt-4 space-y-4">
-                            <div className="space-y-2">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 複製腳本</h4>
-                              <Button 
-                                className="w-full border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black hover:bg-[#FFD700] h-auto py-2"
-                                onClick={() => {
-                                  const script = decodeURIComponent(getBookmarkletCode(true).replace('javascript:', ''));
-                                  navigator.clipboard.writeText(script);
-                                  toast.success("腳本已複製！");
-                                }}
-                              >
-                                <Copy className="w-4 h-4 mr-2" />
-                                點擊複製自動點擊腳本
-                              </Button>
-                            </div>
-                            <div className="space-y-2">
-                              <h4 className="font-black text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 在 HKJC 網頁執行</h4>
-                              <ol className="list-decimal list-inside space-y-1.5 font-bold text-sm text-zinc-700">
-                                <li>前往 HKJC 六合彩投注網頁。</li>
-                                <li>按下鍵盤 <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">F12</kbd> 打開開發者工具。</li>
-                                <li>切換到 <strong>Console (控制台)</strong> 標籤。</li>
-                                <li>貼上剛剛複製的腳本，然後按下 <kbd className="bg-zinc-200 px-1.5 py-0.5 rounded border-2 border-black text-black">Enter</kbd>。</li>
-                                <li className="text-[#FF4D4D]">程式就會自動幫您點擊號碼球和「添加到投注區」！</li>
-                              </ol>
-                            </div>
-                            <div className="pt-3 border-t-4 border-black border-dashed">
-                              <p className="text-xs font-bold text-zinc-500 mb-2">或者，您可以將下方按鈕拖曳到書籤列，在 HKJC 網頁點擊該書籤：</p>
-                              <a
-                                ref={(el) => { if (el) el.setAttribute("href", getBookmarkletCode(true)); }}
-                                onClick={(e) => e.preventDefault()}
-                                className="w-full flex items-center justify-center border-4 border-black font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-white cursor-grab active:cursor-grabbing text-black text-sm h-auto py-2 px-4 rounded-md mb-2"
-                              >
-                                <Link2 className="w-4 h-4 mr-2" />
-                                拖曳至書籤 (自動點擊)
-                              </a>
-                              <p className="text-[11px] font-bold text-[#FF4D4D] bg-[#FF4D4D]/10 p-1.5 rounded-md border border-[#FF4D4D]/20">
-                                ⚠️ 注意：書籤的號碼是固定的！每次重新生成號碼後，您必須刪除舊書籤，並「重新拖曳」一次新的按鈕到書籤列。
-                              </p>
+                          <Button
+                            data-automation-id="hkjc-desktop-btn"
+                            variant="outline"
+                            size="sm"
+                            className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-3 bg-[#a5b4fc] text-black"
+                          />
+                        }>
+                          <span className="flex items-center justify-center px-1 whitespace-nowrap">
+                            <Sparkles className="w-3.5 h-3.5 mr-1 shrink-0" />
+                            <span className="text-xs sm:text-sm">自動點擊 HKJC</span>
+                          </span>
+                        </DialogTrigger>
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
+                          <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                            <DialogHeader>
+                              <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 text-black">
+                                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-500" /> 自動點擊電腦版教學
+                              </DialogTitle>
+                              <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                                <span>此教學專為電腦桌面版瀏覽器的 單式 / 複式 投注頁面設計。</span>
+                              </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="w-full mt-4 space-y-6">
+                              {/* Bookmarklet Instructions */}
+                              <div className="border-4 border-black rounded-2xl p-5 bg-[#fffbfa] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <h4 className="font-black text-lg text-zinc-900 flex items-center gap-2 mb-4">
+                                  <span className="bg-zinc-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">★</span>
+                                  新增與設定瀏覽器自動點擊書籤
+                                </h4>
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <Button 
+                                      variant="outline"
+                                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-3 text-sm truncate"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText("自動按球");
+                                        toast.success("名稱已複製！");
+                                      }}
+                                    >
+                                      <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                      複製書籤名稱 (自動按球)
+                                    </Button>
+                                    <Button 
+                                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-zinc-800 text-white hover:bg-zinc-900 h-auto py-3 text-sm truncate"
+                                      onClick={() => {
+                                        const scriptContent = getBookmarkletCode(true); // desktop bookmarklet for normal single/multi...
+                                        navigator.clipboard.writeText(scriptContent);
+                                        toast.success("自動按球書籤 URL 代碼已複製！");
+                                      }}
+                                    >
+                                      <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                      複製書籤網址 (javascript:...)
+                                    </Button>
+                                  </div>
+                                  <div className="space-y-2 pt-2 border-t border-zinc-200">
+                                    <span className="text-sm font-black text-zinc-800">📌 貼心步驟說明：</span>
+                                    <ol className="list-decimal list-inside space-y-2.5 font-bold text-sm text-zinc-800 bg-white p-4 rounded-xl border-2 border-zinc-200">
+                                      <li>請在您的瀏覽器<b>書籤列</b>上點擊滑鼠右鍵，選擇 <b>「新增網頁」</b> 或 <b>「新增書籤」</b>。</li>
+                                      <li>在<b>名稱</b>欄位填入或貼上：<kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black text-xs font-bold">自動按球</kbd>。</li>
+                                      <li>在<b>網址 (URL)</b> 欄位中，貼上剛剛複製的 <kbd className="bg-zinc-100 px-1 py-0.5 rounded text-xs text-rose-600 font-mono">javascript:...</kbd> 腳本代碼並儲存。</li>
+                                      <li>
+                                        前往 <a href="https://bet.hkjc.com/ch/marksix" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold hover:text-blue-800">HKJC 六合彩投注網頁</a>，接著在書籤列點擊您建好的書籤，程式即刻全自動化點擊並分批加入注項！
+                                      </li>
+                                    </ol>
+                                    <p className="text-[11px] font-bold text-[#FF4D4D] bg-[#FF4D4D]/10 p-2.5 rounded-xl border border-[#FF4D4D]/20 mt-2">
+                                      ⚠️ 注意：書籤貼上的號碼是固定的！每次重新生成號碼後，您必須編輯舊書籤更換網址，或者重新建一個新書籤喔。
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                        </DialogContent>
+                      </Dialog>
                     )}
                     <div className="flex flex-wrap w-full gap-1.5 sm:gap-2 mt-1 lg:mt-0 lg:w-auto lg:flex-none">
                       {!generatedBets.some((b: any) => b.isBankerLegs && (b.bankersCount || 0) > 0) && (
                         <Dialog>
                           <DialogTrigger render={
                           <Button
+                            data-automation-id="hkjc-mobile-btn"
                             variant="outline"
                             size="sm"
                             className="lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:px-3 bg-[#fca5a5] text-black"
@@ -3494,60 +3532,57 @@ export default function App() {
                         <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
                           <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
                             <DialogHeader>
-                              <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽電腦版自動點擊教學
+                              <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 text-black">
+                                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" /> 拖膽電腦版自動點擊教學
                               </DialogTitle>
-                              <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
-                                <span>此書籤腳本專為電腦桌面版瀏覽器的 拖膽 (Banker-Legs) 投注頁面 設計。</span>
+                              <DialogDescription className="font-bold text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
+                                <span>此教學專為電腦桌面版瀏覽器的 拖膽 (Banker-Legs) 投注頁面 設計。</span>
                               </DialogDescription>
                             </DialogHeader>
 
-                            <div className="w-full mt-4 space-y-5">
-                              <div className="space-y-3">
-                                <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">1</span> 複製腳本與設定名稱</h4>
-                                <div className="flex gap-2">
-                                  <Button 
-                                    variant="outline"
-                                    className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-2.5 text-sm sm:text-base px-2 truncate"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText("自動拖膽(PC)");
-                                      toast.success("名稱已複製！");
-                                    }}
-                                  >
-                                    <Copy className="w-4 h-4 mr-2 shrink-0" />
-                                    <span className="truncate">複製書籤名稱</span>
-                                  </Button>
-                                  <Button 
-                                    className="w-1/2 border-4 border-black font-medium shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#4ade80] text-black hover:bg-[#22c55e] h-auto py-2.5 text-sm sm:text-base px-2 truncate"
-                                    onClick={() => {
-                                      const scriptContent = getBankerBookmarkletCode(true);
-                                      navigator.clipboard.writeText(scriptContent);
-                                      toast.success("拖膽(PC)腳本代碼已複製！");
-                                    }}
-                                  >
-                                    <Copy className="w-4 h-4 mr-2 shrink-0" />
-                                    <span className="truncate">複製PC腳本代碼</span>
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">2</span> 在瀏覽器新增書籤</h4>
-                                <ol className="list-decimal list-inside space-y-2 text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
-                                  <li>在瀏覽器書籤列上點擊右鍵，選擇 <b>新增網頁</b> 或 <b>新增書籤</b>。</li>
-                                  <li>名稱欄位貼上：<kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black">自動拖膽(PC)</kbd>。</li>
-                                  <li>網址 (URL) 欄位貼上複製的：<kbd className="bg-[rgba(0,0,0,0.05)] px-1 py-0.5 rounded text-xs select-all">javascript:...</kbd> 腳本代碼。</li>
-                                  <li>點擊 儲存。</li>
-                                </ol>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="font-semibold text-base flex items-center gap-2"><span className="bg-black text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">3</span> 前往投注網站啟用</h4>
-                                <div className="text-sm text-zinc-700 bg-zinc-100 p-3 rounded-xl border-2 border-zinc-200">
-                                  <p className="leading-relaxed">
-                                    前往 <a href="https://bet.hkjc.com/ch/marksix/Banker" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">HKJC 六合彩拖膽投注網頁</a>，接著在書籤列上點擊您剛剛建立好的 <kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black">自動拖膽(PC)</kbd> 書籤，
-                                    腳本便會自動並分批將您的各注組合(包含多個膽配多個腳) 智能點擊並加到投注籃中！
-                                  </p>
+                            <div className="w-full mt-4 space-y-6">
+                              {/* Bookmarklet Instructions */}
+                              <div className="border-4 border-black rounded-2xl p-5 bg-[#fffbfa] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <h4 className="font-black text-lg text-zinc-900 flex items-center gap-2 mb-4">
+                                  <span className="bg-zinc-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">★</span>
+                                  新增與設定瀏覽器自動點擊書籤
+                                </h4>
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <Button 
+                                      variant="outline"
+                                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-[#FFE867] text-black h-auto py-3 text-sm truncate"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText("自動拖膽(PC)");
+                                        toast.success("名稱已複製！");
+                                      }}
+                                    >
+                                      <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                      複製書籤名稱 (自動拖膽(PC))
+                                    </Button>
+                                    <Button 
+                                      className="border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all bg-zinc-800 text-white hover:bg-zinc-900 h-auto py-3 text-sm truncate"
+                                      onClick={() => {
+                                        const scriptContent = getBankerBookmarkletCode(true);
+                                        navigator.clipboard.writeText(scriptContent);
+                                        toast.success("拖膽(PC)書籤 URL 代碼已複製！");
+                                      }}
+                                    >
+                                      <Copy className="w-4 h-4 mr-2 shrink-0" />
+                                      複製書籤網址 (javascript:...)
+                                    </Button>
+                                  </div>
+                                  <div className="space-y-2 pt-2 border-t border-zinc-200">
+                                    <span className="text-sm font-black text-zinc-800">📌 貼心步驟說明：</span>
+                                    <ol className="list-decimal list-inside space-y-2.5 font-bold text-sm text-zinc-800 bg-white p-4 rounded-xl border-2 border-zinc-200">
+                                      <li>請在您的瀏覽器<b>書籤列</b>上點擊滑鼠右鍵，選擇 <b>「新增網頁」</b> 或 <b>「新增書籤」</b>。</li>
+                                      <li>在<b>名稱</b>欄位填入或貼上：<kbd className="bg-[#FFE867] px-1.5 py-0.5 rounded border border-black text-black text-xs font-bold">自動拖膽(PC)</kbd>。</li>
+                                      <li>在<b>網址 (URL)</b> 欄位中，貼上剛剛複製的 <kbd className="bg-zinc-100 px-1 py-0.5 rounded text-xs text-rose-600 font-mono">javascript:...</kbd> 腳本代碼並儲存。</li>
+                                      <li>
+                                        前往 <a href="https://bet.hkjc.com/ch/marksix/Banker" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold hover:text-blue-800">HKJC 六合彩拖膽投注網頁</a>，接著在書籤列點擊您建好的書籤，程式即刻全自動化點擊並分批加入注項！
+                                      </li>
+                                    </ol>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -3559,6 +3594,7 @@ export default function App() {
                       <Dialog>
                         <DialogTrigger render={
                           <Button
+                            data-automation-id="hkjc-banker-mobile-btn"
                             variant="outline"
                             size="sm"
                             className="lg:flex-none border-4 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all rounded-full h-auto py-1 px-2 sm:px-3 bg-[#f87171] text-black"
@@ -4966,7 +5002,7 @@ export default function App() {
       </div>
 
       <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-md bg-[#f0fdf4] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col mb-[10vh] sm:top-1/2 sm:-translate-y-1/2 overflow-hidden">
+        <DialogContent className={`w-[95vw] bg-[#f0fdf4] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col mb-[10vh] sm:top-1/2 sm:-translate-y-1/2 overflow-hidden transition-all duration-300 ${aiBetCount >= 10 ? 'max-w-md md:max-w-3xl' : 'max-w-md'}`}>
           <DialogHeader className="bg-[#16a34a] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0 text-white">
             <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-white">
               <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -4975,59 +5011,67 @@ export default function App() {
           </DialogHeader>
 
           <div className="p-4 sm:p-5 flex-1 space-y-6">
-            <div className="space-y-4 bg-white border-[3px] border-black p-4 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <Label className="font-light text-base">綜合最近期數</Label>
-                  <span className="font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded-md border border-green-300">
-                    {aiAnalysisDraws} 期
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-zinc-500">1期</span>
-                  <div className="flex-1 px-1">
-                    <Slider
-                      min={1}
-                      max={50}
-                      step={1}
-                      value={[aiAnalysisDraws]}
-                      onValueChange={(val) => {
-                        const newValue = Array.isArray(val) ? val[0] : val;
-                        setAiAnalysisDraws(newValue as number);
-                      }}
-                      className="cursor-pointer"
-                    />
+            <div className={`bg-white border-[3px] border-black p-4 sm:p-5 rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${aiBetCount >= 10 ? 'grid grid-cols-1 md:grid-cols-2 gap-6' : 'space-y-4'}`}>
+              
+              {/* Left Column: Recent Draws and Bet Count Sliders */}
+              <div className="space-y-6 flex flex-col justify-center">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Label className="font-light text-base">綜合最近期數</Label>
+                    <span className="font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded-md border border-green-300">
+                      {aiAnalysisDraws} 期
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-zinc-500">50期</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-zinc-500">1期</span>
+                    <div className="flex-1 px-1">
+                      <Slider
+                        min={1}
+                        max={50}
+                        step={1}
+                        value={[aiAnalysisDraws]}
+                        onValueChange={(val) => {
+                          const newValue = Array.isArray(val) ? val[0] : val;
+                          setAiAnalysisDraws(newValue as number);
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-zinc-500">50期</span>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t-2 border-black border-dashed space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Label className="font-light text-base">生成注數</Label>
+                    <span className="font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md border border-orange-300">
+                      {aiBetCount} 注
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-zinc-500">1注</span>
+                    <div className="flex-1 px-1">
+                      <Slider
+                        min={1}
+                        max={30}
+                        step={1}
+                        value={[aiBetCount]}
+                        onValueChange={(val) => {
+                          const newValue = Array.isArray(val) ? val[0] : val;
+                          setAiBetCount(newValue as number);
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-zinc-500">30注</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-4 border-t-2 border-black border-dashed space-y-4">
-                <div className="flex justify-between items-center">
-                  <Label className="font-light text-base">生成注數</Label>
-                  <span className="font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md border border-orange-300">
-                    {aiBetCount} 注
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-zinc-500">1注</span>
-                  <div className="flex-1 px-1">
-                    <Slider
-                      min={1}
-                      max={30}
-                      step={1}
-                      value={[aiBetCount]}
-                      onValueChange={(val) => {
-                        const newValue = Array.isArray(val) ? val[0] : val;
-                        setAiBetCount(newValue as number);
-                      }}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                  <span className="text-xs font-bold text-zinc-500">30注</span>
-                </div>
-                {aiBetCount >= 10 && (
-                  <div className="pt-4 border-t-2 border-black border-dashed">
+              {/* Right Column: AI Banker / Budget Selection */}
+              {aiBetCount >= 10 && (
+                <div className="pt-6 border-t-2 border-dashed border-zinc-200 md:border-t-0 md:border-l-2 md:pt-0 md:pl-6 space-y-4 flex flex-col justify-start">
+                  <div>
                     <div className="flex justify-between items-center mb-1">
                       <div 
                         className="font-bold text-black text-[15px] sm:text-base flex items-center gap-2 cursor-pointer"
@@ -5045,49 +5089,51 @@ export default function App() {
                       )}
                     </div>
                     <span className="font-normal text-xs sm:text-[13px] text-zinc-600 pl-8 flex block leading-tight mb-4">當注數大於10注時，由 AI 改為生成多注「膽拖」配搭，以符合預算覆蓋最多號碼。</span>
-                    {aiBankerMode && (
-                      <div className="pl-6 pt-1 pb-2 space-y-4">
-                        <div>
-                          <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
-                            <span>總預算</span>
-                            <span>${aiBankerBudget}</span>
-                          </div>
-                          <Slider
-                            min={100}
-                            max={800}
-                            step={10}
-                            value={[aiBankerBudget]}
-                            onValueChange={(val) => setAiBankerBudget(Array.isArray(val) ? val[0] : val)}
-                            className="py-1 cursor-pointer"
-                          />
-                          <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
-                            <span>$100</span>
-                            <span>$800</span>
-                          </div>
+                  </div>
+                  
+                  {aiBankerMode && (
+                    <div className="pl-8 pt-1 space-y-5">
+                      <div>
+                        <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
+                          <span>總預算</span>
+                          <span>${aiBankerBudget}</span>
                         </div>
-                        <div>
-                          <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
-                            <span>生成拖膽注數</span>
-                            <span>{aiBankerBetCount} 注</span>
-                          </div>
-                          <Slider
-                            min={1}
-                            max={10}
-                            step={1}
-                            value={[aiBankerBetCount]}
-                            onValueChange={(val) => setAiBankerBetCount(Array.isArray(val) ? val[0] : val)}
-                            className="py-1 cursor-pointer"
-                          />
-                          <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
-                            <span>1 注</span>
-                            <span>10 注</span>
-                          </div>
+                        <Slider
+                          min={100}
+                          max={800}
+                          step={10}
+                          value={[aiBankerBudget]}
+                          onValueChange={(val) => setAiBankerBudget(Array.isArray(val) ? val[0] : val)}
+                          className="py-1 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
+                          <span>$100</span>
+                          <span>$800</span>
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                      
+                      <div>
+                        <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
+                          <span>生成拖膽注數</span>
+                          <span>{aiBankerBetCount} 注</span>
+                        </div>
+                        <Slider
+                          min={1}
+                          max={10}
+                          step={1}
+                          value={[aiBankerBetCount]}
+                          onValueChange={(val) => setAiBankerBetCount(Array.isArray(val) ? val[0] : val)}
+                          className="py-1 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
+                          <span>1 注</span>
+                          <span>10 注</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <Button
