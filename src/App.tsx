@@ -181,6 +181,18 @@ export default function App() {
     });
   };
   const [undoStack, setUndoStack] = useState<{index: number, bet: import('@/lib/marksix').GeneratedBet}[]>([]);
+  const [generationTime, setGenerationTime] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (generatedBets.length > 0) {
+      if (!generationTime) {
+        setGenerationTime(new Date());
+      }
+    } else {
+      setGenerationTime(null);
+    }
+  }, [generatedBets]);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [analysisDrawIndex, setAnalysisDrawIndex] = useState<number | null>(null);
   const [analysisRangeCount, setAnalysisRangeCount] = useState<number>(5);
@@ -197,6 +209,313 @@ export default function App() {
   const [checkManualInput, setCheckManualInput] = useState("");
   const [checkResults, setCheckResults] = useState<{ matches: number[], specialMatch: boolean }[] | null>(null);
   const [isCheckingScreenshot, setIsCheckingScreenshot] = useState(false);
+
+  // Backtesting State
+  const [isBacktestDialogOpen, setIsBacktestDialogOpen] = useState(false);
+  const [backtestFiles, setBacktestFiles] = useState<{
+    name: string;
+    bets: number[][];
+    status: 'loading' | 'success' | 'error';
+    errorMsg?: string;
+  }[]>([]);
+  const [backtestDrawIndex, setBacktestDrawIndex] = useState<number>(0);
+  const [isProcessingBacktest, setIsProcessingBacktest] = useState(false);
+  const [backtestResults, setBacktestResults] = useState<{
+    checkedBets: {
+      fileName: string;
+      bet: number[];
+      matches: number[];
+      specialMatch: boolean;
+      prizeTier: string;
+      isWin: boolean;
+    }[];
+    summary: {
+      totalFiles: number;
+      totalBets: number;
+      totalCost: number;
+      totalWins: number;
+      winsByTier: Record<string, number>;
+    };
+  } | null>(null);
+
+  const runBacktestCheck = (filesList: { name: string; bets: number[][]; status: 'loading' | 'success' | 'error'; errorMsg?: string }[], drawIdx: number) => {
+    if (!liveResults || !liveResults[drawIdx]) return;
+    const drawObj = liveResults[drawIdx];
+    const draw = getRawDrawNumbers(drawObj);
+    const winningNumbers = draw.slice(0, 6);
+    const specialNumber = draw[6];
+
+    const checkedBets: {
+      fileName: string;
+      bet: number[];
+      matches: number[];
+      specialMatch: boolean;
+      prizeTier: string;
+      isWin: boolean;
+    }[] = [];
+    let totalWins = 0;
+    const winsByTier: Record<string, number> = {
+      "頭獎": 0,
+      "二獎": 0,
+      "三獎": 0,
+      "四獎": 0,
+      "五獎": 0,
+      "六獎": 0,
+      "七獎": 0,
+      "未中獎": 0,
+    };
+
+    filesList.forEach((f, fileIdx) => {
+      if (f.status === 'success') {
+        f.bets.forEach(bet => {
+          const matches = bet.filter(n => winningNumbers.includes(n));
+          const specialMatch = bet.includes(specialNumber);
+          const matchCount = matches.length;
+          
+          let prizeTier = "未中獎";
+          let isWin = false;
+
+          if (matchCount === 6) {
+            prizeTier = "頭獎";
+            isWin = true;
+          } else if (matchCount === 5 && specialMatch) {
+            prizeTier = "二獎";
+            isWin = true;
+          } else if (matchCount === 5) {
+            prizeTier = "三獎";
+            isWin = true;
+          } else if (matchCount === 4 && specialMatch) {
+            prizeTier = "四獎";
+            isWin = true;
+          } else if (matchCount === 4) {
+            prizeTier = "五獎";
+            isWin = true;
+          } else if (matchCount === 3 && specialMatch) {
+            prizeTier = "六獎";
+            isWin = true;
+          } else if (matchCount === 3) {
+            prizeTier = "七獎";
+            isWin = true;
+          }
+
+          if (isWin) {
+            totalWins++;
+          }
+          winsByTier[prizeTier] = (winsByTier[prizeTier] || 0) + 1;
+
+          checkedBets.push({
+            fileName: `檔案 #${fileIdx + 1}`,
+            bet,
+            matches,
+            specialMatch,
+            prizeTier,
+            isWin
+          });
+        });
+      }
+    });
+
+    const totalBets = checkedBets.length;
+    setBacktestResults({
+      checkedBets,
+      summary: {
+        totalFiles: filesList.filter(f => f.status === 'success').length,
+        totalBets,
+        totalCost: totalBets * 10,
+        totalWins,
+        winsByTier
+      }
+    });
+  };
+
+  const handleBacktestUpload = async (filesList: FileList | null) => {
+    if (!filesList || filesList.length === 0) return;
+
+    setIsProcessingBacktest(true);
+    const fileArray = Array.from(filesList);
+
+    // Filter duplicates in new files compared with existing
+    const existingNames = new Set(backtestFiles.map(f => f.name));
+    const uniqueNewFiles = fileArray.filter(f => !existingNames.has(f.name));
+
+    if (uniqueNewFiles.length === 0) {
+      toast.info("已剔除重複上傳的檔案");
+      setIsProcessingBacktest(false);
+      return;
+    }
+
+    const newItems = uniqueNewFiles.map(file => ({
+      name: file.name,
+      bets: [] as number[][],
+      status: 'loading' as const,
+    }));
+
+    // Update state to render loader immediately
+    const updatedFileList = [...backtestFiles, ...newItems];
+    setBacktestFiles(updatedFileList);
+
+    for (let i = 0; i < uniqueNewFiles.length; i++) {
+      const file = uniqueNewFiles[i];
+      
+      try {
+        // 1. Try QR code
+        const qrData = await new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                try {
+                  const code = jsQR(imageData.data, imageData.width, imageData.height);
+                  resolve(code ? code.data : null);
+                } catch(err) {
+                  resolve(null);
+                }
+              } else {
+                resolve(null);
+              }
+            };
+            img.onerror = () => resolve(null);
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+
+        let validBets: number[][] = [];
+        if (qrData) {
+          try {
+            const parsed = JSON.parse(qrData);
+            if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
+              validBets = parsed;
+            }
+          } catch(e) {}
+        }
+
+        if (validBets.length > 0) {
+          setBacktestFiles(prev => {
+            const updated = prev.map(item => 
+              item.name === file.name ? { ...item, status: 'success' as const, bets: validBets } : item
+            );
+            setTimeout(() => runBacktestCheck(updated, backtestDrawIndex), 0);
+            return updated;
+          });
+          continue;
+        }
+
+        // 2. Try API fallback
+        const base64data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              const MAX_DIMENSION = 2000;
+
+              if (width > height && width > MAX_DIMENSION) {
+                height = Math.round((height * MAX_DIMENSION) / width);
+                width = MAX_DIMENSION;
+              } else if (height > MAX_DIMENSION) {
+                width = Math.round((width * MAX_DIMENSION) / height);
+                height = MAX_DIMENSION;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.90));
+              } else {
+                resolve(e.target?.result as string);
+              }
+            };
+            img.onerror = reject;
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const mimeTypeMatch = base64data.match(/^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,/);
+        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+        const base64DataReplaced = base64data.includes(",") ? base64data.split(",")[1] : base64data;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        
+        const response = await fetch('/api/extract-numbers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            base64DataReplaced,
+            mimeType
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "無法解析圖片");
+        }
+
+        const responseData = await response.json();
+        if (!responseData.success) {
+          throw new Error("無法辨識圖片號碼");
+        }
+
+        const parsed = responseData.bets;
+        if (Array.isArray(parsed)) {
+          const extractedBets = parsed.filter((b: any) => 
+            Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49)
+          );
+          
+          if (extractedBets.length > 0) {
+            setBacktestFiles(prev => {
+              const updated = prev.map(item => 
+                item.name === file.name ? { ...item, status: 'success' as const, bets: extractedBets } : item
+              );
+              setTimeout(() => runBacktestCheck(updated, backtestDrawIndex), 0);
+              return updated;
+            });
+          } else {
+            throw new Error("不包含有效號碼組合");
+          }
+        } else {
+          throw new Error("格式識別失敗");
+        }
+
+      } catch (err: any) {
+        console.error(`Error processing backtest file ${file.name}:`, err);
+        setBacktestFiles(prev => {
+          const updated = prev.map(item => 
+            item.name === file.name ? { ...item, status: 'error' as const, errorMsg: err.message || "解析失敗" } : item
+          );
+          setTimeout(() => runBacktestCheck(updated, backtestDrawIndex), 0);
+          return updated;
+        });
+      }
+    }
+
+    setIsProcessingBacktest(false);
+  };
+
+  useEffect(() => {
+    if (backtestFiles.length > 0) {
+      runBacktestCheck(backtestFiles, backtestDrawIndex);
+    }
+  }, [backtestDrawIndex]);
 
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [aiAnalysisDraws, setAiAnalysisDraws] = useState(50);
@@ -254,6 +573,16 @@ export default function App() {
   const getDrawDateStr = (draw: any): string => {
     if (Array.isArray(draw)) return "";
     return draw?.date || "";
+  };
+
+  const getFormattedCurrentTime = (d?: Date | null) => {
+    const targetDate = d || generationTime || new Date();
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const dVal = String(targetDate.getDate()).padStart(2, '0');
+    const hours = String(targetDate.getHours()).padStart(2, '0');
+    const mins = String(targetDate.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${dVal} ${hours}:${mins}`;
   };
 
   const [displayPastCount, setDisplayPastCount] = useState<number>(10);
@@ -1231,7 +1560,13 @@ export default function App() {
 
       const a = document.createElement('a');
       a.href = dataUrl;
-      a.download = `marksix-lucky-numbers-${new Date().toISOString().slice(0,10)}.png`;
+      const fileDate = generationTime || new Date();
+      const yr = fileDate.getFullYear();
+      const mo = String(fileDate.getMonth() + 1).padStart(2, '0');
+      const dy = String(fileDate.getDate()).padStart(2, '0');
+      const hr = String(fileDate.getHours()).padStart(2, '0');
+      const mn = String(fileDate.getMinutes()).padStart(2, '0');
+      a.download = `marksix${yr}${mo}${dy}${hr}${mn}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3319,7 +3654,7 @@ export default function App() {
                       >
                         <div className="flex flex-col items-center leading-tight">
                           <span className="flex items-center whitespace-nowrap"><ImageIcon className="w-3.5 h-3.5 mr-1" />儲存生成結果圖片</span>
-                          <span className="text-[10px] sm:text-xs opacity-90 mt-0.5">(內含 QR Code 方便再次對獎)</span>
+                          <span className="text-[10px] sm:text-xs opacity-90 mt-0.5">(內含 QR Code、生成時間及下期開彩日期)</span>
                         </div>
                       </Button>
                     </div>
@@ -4054,7 +4389,7 @@ export default function App() {
 
               </div>
             ) : (
-              <div className="h-full min-h-[500px] flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '3px' }}>
+              <div className="w-full h-auto flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '3px' }}>
                 <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '-13px', paddingBottom: '-15px', marginBottom: '11px', marginRight: '0px' }}>
                   {nextDrawInfo && (
                     <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove', paddingBottom: '7px' }}>
@@ -4078,7 +4413,7 @@ export default function App() {
                   </span>
                 </div>
                 
-                <div className="w-full flex-1 overflow-y-auto pr-1 space-y-2" style={{ marginLeft: '-18px', marginRight: '-18px' }}>
+                <div className="w-full space-y-2">
                   {liveResultsLoading ? (
                     <div className="flex justify-center items-center h-40">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
@@ -4120,11 +4455,10 @@ export default function App() {
                           })}
                           <button
                             onClick={() => setAnalysisDrawIndex(index)}
-                            className="ml-0.5 sm:ml-1 bg-[#FFE867] p-1 sm:px-2 sm:py-1 rounded sm:rounded-md border-2 sm:border-[3px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1.5px] hover:translate-x-[1.5px] hover:shadow-none active:shadow-none transition-all flex items-center justify-center shrink-0 outline-none focus:outline-none"
+                            className="hidden sm:flex ml-1 bg-[#FFE867] px-2 py-1 rounded sm:rounded-md border-2 sm:border-[3px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1.5px] hover:translate-x-[1.5px] hover:shadow-none active:shadow-none transition-all items-center justify-center shrink-0 outline-none focus:outline-none"
                             title="期數分析"
                           >
-                            <BarChart2 className="w-4 h-4 sm:hidden text-black" />
-                            <span className="hidden sm:inline font-black text-sm whitespace-nowrap">分析</span>
+                            <span className="font-black text-sm whitespace-nowrap">分析</span>
                           </button>
                         </div>
                       </div>
@@ -4168,14 +4502,25 @@ export default function App() {
                      <div className="text-center mt-4 text-zinc-500 font-bold text-sm">已展示全部可用期數</div>
                   )}
 
-                  <div className="mt-6 flex w-full justify-center">
+                  <div className="mt-6 flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full justify-center items-center px-2">
                     <Button
                       variant="outline"
-                      className="w-fit bg-[#bae6fd] hover:bg-[#7dd3fc] text-black h-auto py-1.5 px-4 text-base font-black border-4 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                      className="w-full max-w-[290px] sm:w-auto bg-[#bae6fd] hover:bg-[#7dd3fc] text-black h-auto py-2 px-3 sm:px-4 text-sm sm:text-base font-black border-4 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all whitespace-normal text-center flex items-center justify-center gap-1 leading-tight sm:leading-normal shrink-0"
                       onClick={() => setIsAnalysisDialogOpen(true)}
                     >
-                      <BarChart2 className="w-5 h-5 mr-1" />
-                      預計頭獎與總和分析
+                      <BarChart2 className="hidden sm:inline-block w-5 h-5 shrink-0" />
+                      <span>預計頭獎與總和分析</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full max-w-[290px] sm:w-auto bg-[#ffd6a5] hover:bg-[#ffb7b2] text-black h-auto py-2 px-3 sm:px-4 text-sm sm:text-base font-black border-4 border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all whitespace-normal text-center flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 leading-tight shrink-0"
+                      onClick={() => setIsBacktestDialogOpen(true)}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <SearchCheck className="hidden sm:inline-block w-5 h-5 shrink-0" />
+                        <span>核對中奬號碼</span>
+                      </div>
+                      <span className="text-[10px] sm:text-xs font-bold opacity-80 sm:ml-1 leading-none">(Backtesting)</span>
                     </Button>
                   </div>
                 </div>
@@ -4995,8 +5340,14 @@ export default function App() {
             }))} size={160} />
             <div className="mt-3 text-sm font-black text-black">快速對獎・SCAN ME</div>
           </div>
-          <div className="mb-2 text-[#FFE867] text-[15px] font-bold tracking-widest">
+          <div className="mb-2 text-[#FFE867] text-[15px] font-bold tracking-widest text-center">
             此號碼生成系統由池記桌遊提供
+          </div>
+          <div className="mt-1.5 flex flex-col items-center gap-1 text-[13px] font-bold text-zinc-400 text-center leading-relaxed">
+            <div>生成時間：{getFormattedCurrentTime(generationTime)}</div>
+            {nextDrawInfo && (
+              <div>下一期開彩日期：{nextDrawInfo.date}</div>
+            )}
           </div>
         </div>
       </div>
@@ -5716,6 +6067,328 @@ export default function App() {
                 關閉
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isBacktestDialogOpen} onOpenChange={setIsBacktestDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
+          <DialogHeader className="bg-[#ffedd5] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0">
+            <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-black">
+              <SearchCheck className="w-6 h-6 sm:w-7 sm:h-7" />
+              核對中奬號碼 (Backtesting)
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 min-h-0 custom-scrollbar">
+            
+            {/* Draw Period Selector */}
+            <div className="space-y-2">
+              <Label className="font-black text-base sm:text-lg text-black">選擇您想核對的開彩期數：</Label>
+              <Select value={backtestDrawIndex.toString()} onValueChange={(val) => {
+                setBacktestDrawIndex(parseInt(val, 10));
+              }}>
+                <SelectTrigger className="w-full bg-white border-2 border-black rounded-xl font-bold min-h-[44px] h-auto py-2 text-base shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-left whitespace-normal text-black">
+                  <div className="flex-1 text-left sm:flex sm:items-center sm:gap-2">
+                    {(() => {
+                      if (!liveResults || !liveResults[backtestDrawIndex]) return "選擇期數...";
+                      const draw = liveResults[backtestDrawIndex];
+                      const numbers = getRawDrawNumbers(draw);
+                      const dateStr = getDrawDateStr(draw);
+                      const formattedDate = dateStr ? ` (${dateStr})` : '';
+                      return (
+                        <>
+                          <div className="text-sm sm:text-base leading-tight">
+                            {backtestDrawIndex === 0 ? `最近一期${formattedDate}` : `前 ${backtestDrawIndex} 期${formattedDate}`} :
+                          </div>
+                          <div className="text-base sm:text-lg tracking-wider">
+                            {numbers.slice(0,6).join(',')} + ({numbers[6]})
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </SelectTrigger>
+                <SelectContent className="bg-white border-2 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-[40vh] overflow-y-auto text-black">
+                  {liveResults.map((draw, i) => {
+                    const numbers = getRawDrawNumbers(draw);
+                    const dateStr = getDrawDateStr(draw);
+                    const formattedDate = dateStr ? ` (${dateStr})` : '';
+                    return (
+                      <SelectItem key={i} value={i.toString()} className="font-bold cursor-pointer hover:bg-neutral-100 p-2 sm:p-3 items-start flex-col focus:bg-[#FFE867]">
+                        <div className="flex flex-col sm:flex-row w-full sm:items-center sm:gap-2 text-left whitespace-normal">
+                          <span className="text-sm sm:text-base">{i === 0 ? `最近一期${formattedDate}` : `前 ${i} 期${formattedDate}`} :</span>
+                          <span className="text-base sm:text-lg tracking-wider whitespace-normal">{numbers.slice(0,6).join(',')} + ({numbers[6]})</span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Multiple files upload container */}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col items-center justify-center p-4 sm:p-6 border-[4px] border-dashed border-[#FF4D4D] rounded-2xl bg-[#FFE867] text-center hover:bg-[#FFD700] hover:border-black cursor-pointer transition-all relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  multiple
+                  onChange={(e) => {
+                    handleBacktestUpload(e.target.files);
+                    e.target.value = "";
+                  }}
+                  disabled={isProcessingBacktest}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" 
+                />
+                <div className="bg-white rounded-full p-2 border-[3px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-2 group-hover:scale-110 transition-transform">
+                  {isProcessingBacktest ? (
+                    <RefreshCw className="w-6 h-6 animate-spin text-[#3b82f6]" />
+                  ) : (
+                    <Upload className="w-6 h-6 text-[#FF4D4D]" />
+                  )}
+                </div>
+                <div className="font-black text-xl sm:text-2xl text-black tracking-wide mt-1 flex flex-col items-center">
+                  <div>選擇/拖曳多張本系統號碼圖</div>
+                  <div className="text-xs sm:text-sm opacity-75">可同時選取或多次追加・即刻自動對獎</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Uploaded Files Tracking List */}
+            {backtestFiles.length > 0 && (
+              <div className="border-4 border-black rounded-2xl bg-white p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-black text-base text-black flex items-center gap-1.5">
+                    <span>📁 已載入的檔案 </span>
+                    <span className="text-xs bg-zinc-100 text-zinc-600 border border-zinc-300 px-1.5 py-0.5 rounded-full font-bold">
+                      {backtestFiles.length} 個
+                    </span>
+                  </h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setBacktestFiles([]);
+                      setBacktestResults(null);
+                    }}
+                    className="h-7 border-2 border-black font-black text-xs text-rose-600 bg-rose-50 hover:bg-rose-100 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1 text-rose-600" />
+                    清除全部
+                  </Button>
+                </div>
+                <div className="max-h-[160px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                  {backtestFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 border-2 border-black rounded-lg bg-zinc-50 text-xs sm:text-sm">
+                      <div className="font-bold text-zinc-800 truncate max-w-[70%]">
+                        檔案 #{idx + 1}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {file.status === 'loading' && (
+                          <span className="text-[#3b82f6] font-black flex items-center gap-1">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            解析中...
+                          </span>
+                        )}
+                        {file.status === 'success' && (
+                          <span className="text-emerald-600 font-extrabold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            讀取成功 ({file.bets.length}注)
+                          </span>
+                        )}
+                        {file.status === 'error' && (
+                          <span className="text-rose-600 font-extrabold flex items-center gap-1" title={file.errorMsg}>
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                            出錯: {file.errorMsg}
+                          </span>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            const filtered = backtestFiles.filter((_, i) => i !== idx);
+                            setBacktestFiles(filtered);
+                            runBacktestCheck(filtered, backtestDrawIndex);
+                          }}
+                          className="h-6 w-6 border border-zinc-300 hover:bg-rose-100 hover:text-rose-600 text-zinc-400"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Backtesting Results Report */}
+            {backtestResults && backtestResults.checkedBets.length > 0 ? (
+              <div className="space-y-4">
+                
+                {/* Bento Statistics Banner */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="border-3 border-black rounded-xl p-3 bg-[#e0f2fe] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="text-zinc-600 text-xs sm:text-sm font-black">已核對總注數</div>
+                    <div className="text-2xl sm:text-3xl font-black text-sky-600 mt-1">{backtestResults.summary.totalBets} <span className="text-sm text-zinc-800">注</span></div>
+                  </div>
+                  <div className="border-3 border-black rounded-xl p-3 bg-[#fef9c3] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="text-zinc-600 text-xs sm:text-sm font-black">模擬總投注額</div>
+                    <div className="text-2xl sm:text-3xl font-black text-amber-600 mt-1">${backtestResults.summary.totalCost}</div>
+                  </div>
+                  <div className="border-3 border-black rounded-xl p-3 bg-[#f0fdf4] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="text-zinc-600 text-xs sm:text-sm font-black">總中獎注數</div>
+                    <div className="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">{backtestResults.summary.totalWins} <span className="text-sm text-zinc-800">注</span></div>
+                  </div>
+                  <div className="border-3 border-black rounded-xl p-3 bg-[#fdf2f8] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="text-zinc-600 text-xs sm:text-sm font-black">組合中獎率</div>
+                    <div className="text-2xl sm:text-3xl font-black text-rose-600 mt-1">
+                      {backtestResults.summary.totalBets > 0 
+                        ? `${Math.round((backtestResults.summary.totalWins / backtestResults.summary.totalBets) * 1000) / 10}%` 
+                        : '0%'
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prize Tier Summary Matrix */}
+                <div className="border-4 border-black rounded-2xl bg-[#f8fafc] p-3 sm:p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-black">
+                  <h4 className="font-black text-sm text-zinc-700 mb-2 border-b-2 border-zinc-200 pb-1">獎項分佈統計：</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                    {["頭獎", "二獎", "三獎", "四獎", "五獎", "六獎", "七獎", "未中獎"].map((tier) => {
+                      const count = backtestResults.summary.winsByTier[tier] || 0;
+                      const hasCount = count > 0;
+                      return (
+                        <div 
+                          key={tier} 
+                          className={`border-2 border-black rounded-lg p-1.5 text-center transition-all ${
+                            hasCount && tier !== "未中獎" 
+                              ? 'bg-[#FFD700] scale-102 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black' 
+                              : count > 0 ? 'bg-zinc-200 text-zinc-600' : 'bg-white text-zinc-400 opacity-60'
+                          }`}
+                        >
+                          <div className="text-[11px] font-black">{tier}</div>
+                          <div className={`text-lg sm:text-xl font-black ${hasCount && tier !== "未中獎" ? 'text-rose-600' : 'text-black'}`}>
+                            {count}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Individual Bets Detailed Breakdown List */}
+                <div className="space-y-2.5">
+                  <h4 className="font-black text-base text-black pl-1">📋 細明中獎組合清單：</h4>
+                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar text-black">
+                    {backtestResults.checkedBets.map((res, i) => {
+                      const matchCount = res.matches.length;
+                      const hasSpecial = res.specialMatch;
+                      
+                      let bgPrize = "opacity-70 bg-white";
+                      let borderPrize = "border-black";
+
+                      if (res.isWin) {
+                        if (res.prizeTier === "頭獎" || res.prizeTier === "二獎" || res.prizeTier === "三獎") {
+                          bgPrize = "bg-[#FFD700]";
+                          borderPrize = "border-[#FF4D4D]";
+                        } else {
+                          bgPrize = "bg-[#fef9c3]";
+                          borderPrize = "border-[#d97706]";
+                        }
+                      }
+
+                      return (
+                        <div key={i} className={`p-3 sm:p-4 border-[3px] ${borderPrize} rounded-xl font-bold ${bgPrize} ${res.isWin ? 'shadow-[4px_4px_0px_0px_#FFE867]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'}`}>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-black bg-[#404040] text-white px-2 py-0.5 rounded shadow-[1px_1px_0px_0px_rgba(0,0,0,0.3)]">
+                                #{i+1}
+                              </span>
+                              <span className="text-[10px] bg-zinc-100 border border-zinc-300 text-zinc-500 rounded px-1.5 py-0.5 font-bold truncate max-w-[150px] sm:max-w-xs" title={res.fileName}>
+                                {res.fileName}
+                              </span>
+                              
+                              <div className="flex gap-1">
+                                <span className="bg-white border-2 border-zinc-400 px-1.5 py-0.2 rounded text-xs font-bold text-zinc-600">
+                                  中 <strong className={matchCount > 0 ? "text-[#3b82f6] text-sm" : "text-zinc-600"}>{matchCount}</strong> 個字
+                                </span>
+                                {hasSpecial && (
+                                  <span className="bg-white border-2 border-[#FF4D4D] px-1.5 py-0.2 rounded text-[11px] font-black text-[#FF4D4D]">
+                                    + 特
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Win Badge */}
+                            {res.isWin ? (
+                              <div className="bg-[#FF4D4D] text-white text-xs px-2 py-0.5 rounded border-2 border-black transform -rotate-2 font-black uppercase tracking-wider">
+                                中 {res.prizeTier}！
+                              </div>
+                            ) : (
+                              <div className="text-zinc-400 font-bold text-xs">
+                                未中獎
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Balls rendering */}
+                          <div className="flex flex-wrap gap-1 sm:gap-1.5 pt-1 w-full justify-start">
+                            {res.bet.map((num: number, idx: number) => {
+                              const isMatchNormal = res.matches.includes(num);
+                              
+                              const currentCheckDraw = liveResults[backtestDrawIndex];
+                              const currentWinningNumbers = currentCheckDraw ? getRawDrawNumbers(currentCheckDraw) : [];
+                              const isMatchSpecial = currentWinningNumbers.length > 6 && num === currentWinningNumbers[6];
+                              
+                              const isAnyMatch = isMatchNormal || isMatchSpecial;
+                              
+                              const color = getBallColor(num);
+                              const winBgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                              const lightBorderColor = color === "red" ? "border-[#FF9999]" : color === "blue" ? "border-[#99CCFF]" : "border-[#99FF99]";
+                              const lightTextColor = color === "red" ? "text-zinc-400" : color === "blue" ? "text-zinc-400" : "text-zinc-400";
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`w-[32px] h-[32px] sm:w-[38px] sm:h-[38px] shrink-0 rounded-full flex flex-col items-center justify-center font-black text-lg sm:text-xl leading-none tracking-tighter pt-0.5 border-2 transition-all relative ${
+                                    isAnyMatch 
+                                      ? `text-white border-black ${winBgColor} shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ring-[1px] ring-offset-1 ${isMatchSpecial ? 'ring-[#FF4D4D]' : 'ring-black'} transform -translate-y-[1px]`
+                                      : `bg-white ${lightBorderColor} ${lightTextColor} opacity-40`
+                                  }`}
+                                >
+                                  {num}
+                                  {isMatchSpecial && (
+                                    <div className="absolute -bottom-1 -right-1 text-[8px] bg-[#FF4D4D] text-white px-0.5 leading-none rounded border border-black shadow-[0.5px_0.5px_0px_0px_rgba(0,0,0,1)] font-bold">
+                                      特
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="text-center py-6 text-zinc-500 font-bold">
+                請上傳系統下載的號碼截圖（或包含對應 QR Code 的截圖）開始進行批量回測。
+              </div>
+            )}
+
+            <div className="flex justify-center pt-2">
+              <Button onClick={() => setIsBacktestDialogOpen(false)} className="border-4 border-black font-black text-black bg-zinc-100 hover:bg-zinc-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-xl px-10 h-11 text-base">
+                關閉
+              </Button>
+            </div>
+            
           </div>
         </DialogContent>
       </Dialog>
