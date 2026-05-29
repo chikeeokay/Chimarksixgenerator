@@ -304,7 +304,7 @@ export default function App() {
           winsByTier[prizeTier] = (winsByTier[prizeTier] || 0) + 1;
 
           checkedBets.push({
-            fileName: `檔案 #${fileIdx + 1}`,
+            fileName: getDisplayNameForFile(f.name, fileIdx + 1),
             bet,
             matches,
             specialMatch,
@@ -583,6 +583,40 @@ export default function App() {
     const hours = String(targetDate.getHours()).padStart(2, '0');
     const mins = String(targetDate.getMinutes()).padStart(2, '0');
     return `${year}-${month}-${dVal} ${hours}:${mins}`;
+  };
+
+  const getDisplayNameForFile = (fileName: string, fallbackIndex: number): string => {
+    // Try pattern marksixYYYYMMDDHHmm
+    const marksixTimeRegex = /marksix(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/i;
+    let match = fileName.match(marksixTimeRegex);
+    if (match) {
+      const [_, year, month, day, hour, min] = match;
+      return `${year}-${month}-${day} ${hour}:${min} 生成`;
+    }
+
+    // Try pattern YYYYMMDDHHmm directly anywhere in the filename
+    const generalTimeRegex = /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/;
+    match = fileName.match(generalTimeRegex);
+    if (match) {
+      const [_, year, month, day, hour, min] = match;
+      const m = parseInt(month, 10);
+      const d = parseInt(day, 10);
+      const h = parseInt(hour, 10);
+      const mn = parseInt(min, 10);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && h >= 0 && h <= 23 && mn >= 0 && mn <= 59) {
+        return `${year}-${month}-${day} ${hour}:${min} 生成`;
+      }
+    }
+
+    // Try pattern marksix-lucky-numbers-YYYY-MM-DD
+    const marksixLuckyRegex = /marksix-lucky-numbers-(\d{4})-(\d{2})-(\d{2})/i;
+    match = fileName.match(marksixLuckyRegex);
+    if (match) {
+      const [_, year, month, day] = match;
+      return `${year}-${month}-${day} 生成`;
+    }
+
+    return `檔案 #${fallbackIndex}`;
   };
 
   const [displayPastCount, setDisplayPastCount] = useState<number>(10);
@@ -6182,8 +6216,8 @@ export default function App() {
                 <div className="max-h-[160px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                   {backtestFiles.map((file, idx) => (
                     <div key={idx} className="flex items-center justify-between p-2 border-2 border-black rounded-lg bg-zinc-50 text-xs sm:text-sm">
-                      <div className="font-bold text-zinc-800 truncate max-w-[70%]">
-                        檔案 #{idx + 1}
+                      <div className="font-bold text-zinc-800 truncate max-w-[70%]" title={file.name}>
+                        {getDisplayNameForFile(file.name, idx + 1)}
                       </div>
                       <div className="flex items-center gap-2">
                         {file.status === 'loading' && (
