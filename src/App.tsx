@@ -3729,8 +3729,8 @@ export default function App() {
                             <span className="text-xs sm:text-sm">自動點擊 HKJC</span>
                           </span>
                         </DialogTrigger>
-                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                          <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col h-[90vh] sm:h-auto max-h-[90vh]">
+                          <div className="p-6 sm:p-8 overflow-y-auto w-full flex-1 grow custom-scrollbar min-h-0">
                             <DialogHeader>
                               <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 text-black">
                                 <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-500" /> 自動點擊電腦版教學
@@ -3809,8 +3809,8 @@ export default function App() {
                               <span className="text-xs sm:text-sm">自動按球(手機)</span>
                             </span>
                         </DialogTrigger>
-                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                        <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col h-[90vh] sm:h-auto max-h-[90vh]">
+                        <div className="p-6 sm:p-8 overflow-y-auto w-full flex-1 grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 手機版自動點擊教學</DialogTitle>
                             <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
@@ -3911,8 +3911,8 @@ export default function App() {
                               <span className="text-xs sm:text-sm">自動點擊(拖膽PC)</span>
                             </span>
                         </DialogTrigger>
-                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                          <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] overflow-hidden bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col h-[90vh] sm:h-auto max-h-[90vh]">
+                          <div className="p-6 sm:p-8 overflow-y-auto w-full flex-1 grow custom-scrollbar min-h-0">
                             <DialogHeader>
                               <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 text-black">
                                 <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" /> 拖膽電腦版自動點擊教學
@@ -3987,8 +3987,8 @@ export default function App() {
                               <span className="text-xs sm:text-sm">自動拖膽(手機)</span>
                             </span>
                         </DialogTrigger>
-                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col max-h-[90vh]">
-                          <div className="p-6 sm:p-8 overflow-y-auto w-full grow custom-scrollbar min-h-0">
+                        <DialogContent className="border-4 border-black rounded-[40px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] sm:max-w-3xl w-[95vw] bg-white text-black p-0 top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2 flex flex-col h-[90vh] sm:h-auto max-h-[90vh]">
+                          <div className="p-6 sm:p-8 overflow-y-auto w-full flex-1 grow custom-scrollbar min-h-0">
                           <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl font-semibold flex items-center gap-2"><Smartphone className="w-5 h-5 sm:w-6 sm:h-6"/> 拖膽手機版自動點擊教學</DialogTitle>
                             <DialogDescription className="text-black/80 text-sm sm:text-base space-y-2 flex flex-col">
@@ -5551,7 +5551,7 @@ export default function App() {
       </Dialog>
 
       <Dialog open={isCheckDialogOpen} onOpenChange={setIsCheckDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-[90vh] sm:h-auto max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
           <DialogHeader className="bg-[#ffedd5] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0">
             <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0">
               <SearchCheck className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -5825,7 +5825,7 @@ export default function App() {
       </Dialog>
 
       <Dialog open={isAnalysisDialogOpen} onOpenChange={setIsAnalysisDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl bg-white border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl bg-white border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-[90vh] sm:h-auto max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
           <DialogHeader className="bg-[#bae6fd] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0">
             <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-black">
               <BarChart2 className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -6126,7 +6126,7 @@ export default function App() {
       </Dialog>
 
       <Dialog open={isBacktestDialogOpen} onOpenChange={setIsBacktestDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl bg-[#fff7ed] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-[90vh] sm:h-auto max-h-[90vh] overflow-hidden top-[5vh] translate-y-0 sm:top-1/2 sm:-translate-y-1/2">
           <DialogHeader className="bg-[#ffedd5] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0">
             <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0 text-black">
               <SearchCheck className="w-6 h-6 sm:w-7 sm:h-7" />
