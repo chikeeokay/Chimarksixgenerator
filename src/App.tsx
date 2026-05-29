@@ -511,11 +511,7 @@ export default function App() {
     setIsProcessingBacktest(false);
   };
 
-  useEffect(() => {
-    if (backtestFiles.length > 0) {
-      runBacktestCheck(backtestFiles, backtestDrawIndex);
-    }
-  }, [backtestDrawIndex]);
+
 
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [aiAnalysisDraws, setAiAnalysisDraws] = useState(50);
@@ -1176,12 +1172,14 @@ export default function App() {
       });
   };
 
-  const handlePerformCheck = (betsToCheck: number[][]) => {
-    if (!liveResults[checkDrawIndex]) {
+  const [checkBetsData, setCheckBetsData] = useState<number[][] | null>(null);
+
+  const handlePerformCheck = (betsToCheck: number[][], drawIdx: number = checkDrawIndex) => {
+    if (!liveResults[drawIdx]) {
       toast.error("找不到該期開彩結果");
       return;
     }
-    const drawObj = liveResults[checkDrawIndex];
+    const drawObj = liveResults[drawIdx];
     const draw = getRawDrawNumbers(drawObj);
     const winningNumbers = draw.slice(0, 6);
     const specialNumber = draw[6];
@@ -1192,7 +1190,22 @@ export default function App() {
       return { bet, matches, specialMatch };
     });
     setCheckResults(results);
+    setCheckBetsData(betsToCheck);
   };
+
+  // 當開啟對獎視窗、或投注組合變更、或更換期數時，自動重新核對過關
+  useEffect(() => {
+    if (isCheckDialogOpen && checkBetsData) {
+      handlePerformCheck(checkBetsData, checkDrawIndex);
+    }
+  }, [isCheckDialogOpen, checkBetsData, checkDrawIndex]);
+
+  // 當開啟回測視窗、或回測檔案變更、或更換期數時，自動重新核對過關
+  useEffect(() => {
+    if (isBacktestDialogOpen && backtestFiles.length > 0) {
+      runBacktestCheck(backtestFiles, backtestDrawIndex);
+    }
+  }, [isBacktestDialogOpen, backtestFiles, backtestDrawIndex]);
 
   const handleManualCheck = () => {
     try {
@@ -5550,8 +5563,13 @@ export default function App() {
             <div className="space-y-2">
               <Label className="font-black text-base sm:text-lg">選擇您想核對的開彩期數：</Label>
               <Select value={checkDrawIndex.toString()} onValueChange={(val) => {
-                setCheckDrawIndex(parseInt(val, 10));
-                setCheckResults(null); 
+                const idx = parseInt(val, 10);
+                setCheckDrawIndex(idx);
+                if (checkBetsData) {
+                  handlePerformCheck(checkBetsData, idx);
+                } else {
+                  setCheckResults(null); 
+                }
               }}>
                 <SelectTrigger className="w-full bg-white border-2 border-black rounded-xl font-bold min-h-[44px] h-auto py-2 text-base shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-left whitespace-normal">
                   <div className="flex-1 text-left sm:flex sm:items-center sm:gap-2">
@@ -5590,6 +5608,8 @@ export default function App() {
                   })}
                 </SelectContent>
               </Select>
+
+
             </div>
 
             {!checkResults ? (
@@ -6159,6 +6179,8 @@ export default function App() {
                   })}
                 </SelectContent>
               </Select>
+
+
             </div>
 
             {/* Multiple files upload container */}
