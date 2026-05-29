@@ -1261,6 +1261,188 @@ export default function App() {
     }
   };
 
+  const processScreenshotsForCheck = async (filesList: FileList | null) => {
+    if (!filesList || filesList.length === 0) return;
+    setIsCheckingScreenshot(true);
+    
+    const fileArray = Array.from(filesList);
+    const totalFiles = fileArray.length;
+    let allCombinedBets: number[][] = [];
+    let succeededCount = 0;
+    let failedCount = 0;
+    
+    for (let idx = 0; idx < totalFiles; idx++) {
+      const file = fileArray[idx];
+      const toastMsg = totalFiles > 1 
+        ? `正在解析圖片中的號碼 (${idx + 1}/${totalFiles})...` 
+        : `正在解析圖片中的號碼...`;
+        
+      toast.loading(
+        <div className="text-center w-full font-bold text-[16px] text-zinc-700">{toastMsg}</div>,
+        { id: "check-screenshot" }
+      );
+      
+      try {
+        // 1. Try QR Code First
+        const qrData = await new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                try {
+                  const code = jsQR(imageData.data, imageData.width, imageData.height);
+                  resolve(code ? code.data : null);
+                } catch(e) {
+                  resolve(null);
+                }
+              } else {
+                resolve(null);
+              }
+            };
+            img.onerror = () => resolve(null);
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+
+        let fileBets: number[][] = [];
+        if (qrData) {
+          try {
+            const parsed = JSON.parse(qrData);
+            if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
+              fileBets = parsed;
+            }
+          } catch(e) {}
+        }
+
+        if (fileBets.length > 0) {
+          allCombinedBets.push(...fileBets);
+          succeededCount++;
+          continue;
+        }
+
+        // 2. Fallback to API if QR not found or invalid
+        const base64data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              const MAX_DIMENSION = 2500;
+
+              if (width > height && width > MAX_DIMENSION) {
+                height = Math.round((height * MAX_DIMENSION) / width);
+                width = MAX_DIMENSION;
+              } else if (height > MAX_DIMENSION) {
+                width = Math.round((width * MAX_DIMENSION) / height);
+                height = MAX_DIMENSION;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.95));
+              } else {
+                resolve(e.target?.result as string);
+              }
+            };
+            img.onerror = reject;
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const mimeTypeMatch = base64data.match(/^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,/);
+        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+        const base64DataReplaced = base64data.includes(",") ? base64data.split(",")[1] : base64data;
+
+        // Send to Backend API
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        
+        const response = await fetch('/api/extract-numbers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            base64DataReplaced,
+            mimeType
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to analyze image");
+        }
+
+        const responseData = await response.json();
+        if (!responseData.success) {
+          throw new Error("Failed to extract numbers");
+        }
+        const parsed = responseData.bets;
+
+        if (Array.isArray(parsed)) {
+          const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
+          if (validBets.length > 0) {
+            allCombinedBets.push(...validBets);
+            succeededCount++;
+          } else {
+            failedCount++;
+          }
+        } else {
+          failedCount++;
+        }
+      } catch (err: any) {
+        console.error(`Error parsing file ${file.name}:`, err);
+        failedCount++;
+      }
+    }
+
+    setIsCheckingScreenshot(false);
+
+    if (allCombinedBets.length > 0) {
+      handlePerformCheck(allCombinedBets);
+      if (failedCount > 0) {
+        toast.success(
+          <div className="text-center flex-1 font-bold">
+            成功解析號碼！(成功: {succeededCount}張, 失敗: {failedCount}張)
+          </div>, 
+          { id: "check-screenshot" }
+        );
+      } else {
+        toast.success(
+          <div className="text-center flex-1 font-bold">
+            成功讀取全部圖片中的號碼！(共 {allCombinedBets.length}注)
+          </div>, 
+          { id: "check-screenshot" }
+        );
+      }
+    } else {
+      toast.error(
+        <div className="text-left font-bold text-[15px] whitespace-pre-wrap break-words">
+          未能成功解析任何圖片。請確保您使用的是本系統下載的截圖（含 QR Code 或號碼）。
+        </div>,
+        { id: "check-screenshot", duration: 5000 }
+      );
+    }
+  };
+
   const processScreenshotForCheck = async (file: File) => {
     setIsCheckingScreenshot(true);
     toast.loading(
@@ -5627,9 +5809,11 @@ export default function App() {
                       <input 
                         type="file" 
                         accept="image/*" 
+                        multiple
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) processScreenshotForCheck(file);
+                          if (e.target.files && e.target.files.length > 0) {
+                            processScreenshotsForCheck(e.target.files);
+                          }
                           e.target.value = "";
                         }}
                         disabled={isCheckingScreenshot}
@@ -5637,14 +5821,14 @@ export default function App() {
                       />
                       <div className="bg-white rounded-full p-2 border-[3px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-2 group-hover:scale-110 transition-transform">
                         {isCheckingScreenshot ? (
-                          <RefreshCw className="w-6 h-6 animate-spin text-[#3b82f6]" />
+                           <RefreshCw className="w-6 h-6 animate-spin text-[#3b82f6]" />
                         ) : (
                           <Upload className="w-6 h-6 text-[#FF4D4D]" />
                         )}
                       </div>
                       <div className="font-black text-xl sm:text-2xl text-black tracking-wide mt-1 flex flex-col items-center">
-                        <div>上傳系統截圖</div>
-                        <div className="text-xs sm:text-sm opacity-75">準確率高・可能需要幾秒鐘</div>
+                        <div>上傳系統截圖 (支援多圖)</div>
+                        <div className="text-xs sm:text-sm opacity-75">可單張或同時選取多張對獎</div>
                       </div>
                       
                       <div className="mt-2 text-[12px] sm:text-[13px] font-black bg-white text-black px-2 py-1 border-[3px] border-black rounded-lg transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] inline-block">
