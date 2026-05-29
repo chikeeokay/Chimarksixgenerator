@@ -4684,10 +4684,10 @@ export default function App() {
                           })}
                           <button
                             onClick={() => setAnalysisDrawIndex(index)}
-                            className="hidden sm:flex ml-1 bg-[#FFE867] px-2 py-1 rounded sm:rounded-md border-2 sm:border-[3px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1.5px] hover:translate-x-[1.5px] hover:shadow-none active:shadow-none transition-all items-center justify-center shrink-0 outline-none focus:outline-none"
+                            className="flex ml-1 bg-[#FFE867] px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded sm:rounded-md border-2 sm:border-[3px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1.5px] hover:translate-x-[1.5px] hover:shadow-none active:shadow-none transition-all items-center justify-center shrink-0 outline-none focus:outline-none"
                             title="期數分析"
                           >
-                            <span className="font-black text-sm whitespace-nowrap">分析</span>
+                            <span className="font-black text-xs sm:text-sm whitespace-nowrap text-black">分析</span>
                           </button>
                         </div>
                       </div>
