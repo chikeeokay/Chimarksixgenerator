@@ -2131,10 +2131,28 @@ export default function App() {
         if (!bets || bets.length === 0) { alert("沒有生成拖膽號碼！"); return; }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const triggerClick = (el) => {
-          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          try { el.scrollIntoView({block: 'center', behavior: 'auto'}); } catch(e) {}
           const rect = el.getBoundingClientRect();
           const cx = Math.round(rect.left + rect.width / 2);
           const cy = Math.round(rect.top + rect.height / 2);
+          
+          if(window.TouchEvent){
+            try {
+              const touch = new Touch({
+                identifier: Date.now(),
+                target: el,
+                clientX: cx,
+                clientY: cy,
+                screenX: cx,
+                screenY: cy,
+                pageX: cx + window.scrollX,
+                pageY: cy + window.scrollY
+              });
+              el.dispatchEvent(new TouchEvent('touchstart', {bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch]}));
+              el.dispatchEvent(new TouchEvent('touchend', {bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [touch]}));
+            } catch(te){}
+          }
+          
           el.click();
           if(window.MouseEvent){
             el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
@@ -2142,7 +2160,7 @@ export default function App() {
           }
           if(window.PointerEvent){
             el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
-            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, cy: cy}));
+            el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
           }
         };
         const isInCart = (element) => {
@@ -2157,8 +2175,8 @@ export default function App() {
               id = curr.id.toLowerCase();
             }
             if (
-              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
-              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("selected_numbers") || cl.includes("selected-num") || cl.includes("selected_num") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") || cl.includes("preview") || cl.includes("favorite") || cl.includes("heart") || cl.includes("fixed-bottom") || cl.includes("footer") || cl.includes("bottom") || cl.includes("punter") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("selected_numbers") || id.includes("selected-num") || id.includes("selected_num") || id.includes("reflist") || id.includes("receipt") || id.includes("queue") || id.includes("preview") || id.includes("favorite") || id.includes("heart") || id.includes("fixed-bottom") || id.includes("footer") || id.includes("bottom") || id.includes("punter")
             ) {
               return true;
             }
@@ -2231,7 +2249,9 @@ export default function App() {
                   
                   if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
                       targetEl = el;
-                      if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                      const tagName = el.tagName.toLowerCase();
+                      const className = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : "";
+                      if (className.includes('ball') || className.includes('num') || tagName === 'button' || tagName === 'a') {
                         break;
                       }
                   }
@@ -2243,7 +2263,7 @@ export default function App() {
               }
 
               if (!clicked) console.log("找不到號碼: " + str);
-              await sleep(700);
+              await sleep(800);
             }
           }
           await sleep(1500);
@@ -2435,13 +2455,33 @@ export default function App() {
         }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const triggerClick = (el) => {
-          try { el.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e) {}
+          try { el.scrollIntoView({block: 'center', behavior: 'auto'}); } catch(e) {}
           const rect = el.getBoundingClientRect();
           const cx = Math.round(rect.left + rect.width / 2);
           const cy = Math.round(rect.top + rect.height / 2);
+          
+          if(window.TouchEvent){
+            try {
+              const touch = new Touch({
+                identifier: Date.now(),
+                target: el,
+                clientX: cx,
+                clientY: cy,
+                screenX: cx,
+                screenY: cy,
+                pageX: cx + window.scrollX,
+                pageY: cy + window.scrollY
+              });
+              el.dispatchEvent(new TouchEvent('touchstart', {bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch]}));
+              el.dispatchEvent(new TouchEvent('touchend', {bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [touch]}));
+            } catch(te){}
+          }
+          
           el.click();
-          el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
-          el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
+          if(window.MouseEvent){
+            el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, clientX: cx, clientY: cy}));
+            el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX: cx, clientY: cy}));
+          }
           if (window.PointerEvent) {
             el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: cx, clientY: cy}));
             el.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: cx, clientY: cy}));
@@ -2459,8 +2499,8 @@ export default function App() {
               id = curr.id.toLowerCase();
             }
             if (
-              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") ||
-              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("reflist") || id.includes("receipt") || id.includes("queue")
+              cl.includes("cart") || cl.includes("slip") || cl.includes("basket") || cl.includes("summary") || cl.includes("infolist") || cl.includes("selected-numbers") || cl.includes("selected_numbers") || cl.includes("selected-num") || cl.includes("selected_num") || cl.includes("reflist") || cl.includes("receipt") || cl.includes("queue") || cl.includes("preview") || cl.includes("favorite") || cl.includes("heart") || cl.includes("fixed-bottom") || cl.includes("footer") || cl.includes("bottom") || cl.includes("punter") ||
+              id.includes("cart") || id.includes("slip") || id.includes("basket") || id.includes("summary") || id.includes("infolist") || id.includes("selected-numbers") || id.includes("selected_numbers") || id.includes("selected-num") || id.includes("selected_num") || id.includes("reflist") || id.includes("receipt") || id.includes("queue") || id.includes("preview") || id.includes("favorite") || id.includes("heart") || id.includes("fixed-bottom") || id.includes("footer") || id.includes("bottom") || id.includes("punter")
             ) {
               return true;
             }
@@ -2497,7 +2537,9 @@ export default function App() {
                 
                 if (rect.width >= 20 && rect.width <= 150 && rect.height >= 20 && rect.height <= 150) {
                     targetEl = el;
-                    if (el.className && typeof el.className === 'string' && (el.className.toLowerCase().includes('ball') || el.className.toLowerCase().includes('num'))) {
+                    const tagName = el.tagName.toLowerCase();
+                    const className = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : "";
+                    if (className.includes('ball') || className.includes('num') || tagName === 'button' || tagName === 'a') {
                       break;
                     }
                 }
