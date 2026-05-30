@@ -79,6 +79,92 @@ function getCombinationsCount(n: number, k: number) {
   return c;
 }
 
+function generateBankerConfigs(totalBudget: number, count: number): { bCount: number, legsLength: number, cost: number, isBanker: boolean }[] {
+  // Pre-reserve $10 for each bet as a standard single bet
+  const configs = Array.from({ length: count }, () => ({
+    bCount: 0,
+    legsLength: 6,
+    cost: 10,
+    isBanker: false
+  }));
+
+  let remainingBudget = totalBudget - count * 10;
+  if (remainingBudget < 0) {
+    return configs;
+  }
+
+  // Preferred banker counts [4, 3, 2] to cycle for rich, natural diversity (never 5, preventing rigid patterns)
+  const preferredBs = Array.from({ length: count }, (_, i) => [4, 3, 2][i % 3]);
+
+  // Upgrade phase: try to upgrade standard bets to banker-leg bets within budget
+  for (let i = 0; i < count; i++) {
+    const targetB = preferredBs[i];
+    const minL = Math.max(2, 7 - targetB);
+    const minCost = getCombinationsCount(minL, 6 - targetB) * 10;
+    const upgradeCost = minCost - 10;
+
+    if (remainingBudget >= upgradeCost) {
+      configs[i] = {
+        bCount: targetB,
+        legsLength: minL,
+        cost: minCost,
+        isBanker: true
+      };
+      remainingBudget -= upgradeCost;
+    } else {
+      // Fall back to alternative banker counts (4, 3, or 2) that can fit
+      const alternatives = [4, 3, 2];
+      for (const altB of alternatives) {
+        const altMinL = Math.max(2, 7 - altB);
+        const altCost = getCombinationsCount(altMinL, 6 - altB) * 10;
+        const altUpgradeCost = altCost - 10;
+        if (remainingBudget >= altUpgradeCost) {
+          configs[i] = {
+            bCount: altB,
+            legsLength: altMinL,
+            cost: altCost,
+            isBanker: true
+          };
+          remainingBudget -= altUpgradeCost;
+          break;
+        }
+      }
+    }
+  }
+
+  // Expansion phase: extend legs for the upgraded banker bets to maximize number coverage and fit the budget perfectly
+  let expanded = true;
+  let attempts = 0;
+  while (expanded && remainingBudget > 0 && attempts < 1000) {
+    expanded = false;
+    attempts++;
+
+    // Randomize indices to ensure all elements have equal chances of leg expansion, preventing rigid patterns
+    const indices = Array.from({ length: count }, (_, i) => i).sort(() => Math.random() - 0.5);
+
+    for (const idx of indices) {
+      const cfg = configs[idx];
+      if (!cfg.isBanker) continue;
+
+      const nextL = cfg.legsLength + 1;
+      if (nextL > 40) continue; // Safety limit of 40 legs
+
+      const newCost = getCombinationsCount(nextL, 6 - cfg.bCount) * 10;
+      const costIncrease = newCost - cfg.cost;
+
+      if (remainingBudget >= costIncrease) {
+        cfg.legsLength = nextL;
+        cfg.cost = newCost;
+        remainingBudget -= costIncrease;
+        expanded = true;
+        break; // Break and reshuffle to distribute remaining budget fairly
+      }
+    }
+  }
+
+  return configs;
+}
+
 function getCombos(arr: number[], k: number): number[][] {
   if (k === 0) return [[]];
   if (arr.length === 0) return [];
@@ -801,40 +887,19 @@ export default function App() {
       });
 
     const betsCountToGenerate = coverBetCount || 1;
-    const individualBudget = Math.floor(coverBudget / betsCountToGenerate);
     const newBets: any[] = [];
 
+    // Pre-calculate highly varied, non-uniform configs that sum up perfectly to the budget
+    const configs = generateBankerConfigs(coverBudget, betsCountToGenerate);
+
     for (let i = 0; i < betsCountToGenerate; i++) {
-      let isBanker = true;
+      const config = configs[i];
+      let isBanker = config.isBanker;
       let bankers: number[] = [];
       let legs: number[] = [];
-      
-      // Cycle target banker counts for perfect variety and to prevent uniform configurations
-      let targetBCount = [4, 3, 2][i % 3];
-      let minLegsRequired = Math.max(2, 7 - targetBCount);
-      let minCost = getCombinationsCount(minLegsRequired, 6 - targetBCount) * 10;
 
-      // Adjust target banker count if budget is tight but still enough for a banker bet
-      if (minCost > individualBudget && individualBudget >= 20) {
-        const alternatives = [4, 3, 2];
-        for (const altB of alternatives) {
-          const altMinLegs = Math.max(2, 7 - altB);
-          const altCost = getCombinationsCount(altMinLegs, 6 - altB) * 10;
-          if (altCost <= individualBudget) {
-            targetBCount = altB;
-            minLegsRequired = altMinLegs;
-            minCost = altCost;
-            break;
-          }
-        }
-      }
-
-      if (individualBudget < 20) {
-        isBanker = false;
-      }
-
-      // Determine bankers for this bet
       if (isBanker) {
+        const targetBCount = config.bCount;
         if (shuffledUnselected.length <= targetBCount) {
           bankers = [...shuffledUnselected];
         } else {
@@ -854,23 +919,16 @@ export default function App() {
         legs = shuffledUnselected.slice(0, 6);
       } else {
         const remainingUnselected = shuffledUnselected.filter(n => !bankers.includes(n));
+        const requiredLegsLength = config.legsLength;
+        const selectedLegs = remainingUnselected.slice(0, requiredLegsLength);
         
-        let maxLegs = minLegsRequired;
-        while (getCombinationsCount(maxLegs + 1, 6 - bCount) * 10 <= individualBudget && maxLegs + 1 <= 49 - bCount) {
-          maxLegs++;
-        }
-
-        let selectCount = Math.min(remainingUnselected.length, maxLegs);
-        let selectedLegs = remainingUnselected.slice(0, selectCount);
-        
-        if (selectedLegs.length < maxLegs) {
-          const extraCount = maxLegs - selectedLegs.length;
-          selectedLegs.push(...availableExtras.filter(n => !bankers.includes(n) && !selectedLegs.includes(n)).slice(0, extraCount));
-        }
-        
-        if (selectedLegs.length < minLegsRequired) {
-          const shortage = minLegsRequired - selectedLegs.length;
-          selectedLegs.push(...availableExtras.filter(n => !bankers.includes(n) && !selectedLegs.includes(n)).slice(0, shortage));
+        if (selectedLegs.length < requiredLegsLength) {
+          const extraCount = requiredLegsLength - selectedLegs.length;
+          selectedLegs.push(
+            ...availableExtras
+              .filter(n => !bankers.includes(n) && !selectedLegs.includes(n))
+              .slice(0, extraCount)
+          );
         }
         
         legs = selectedLegs;
@@ -881,14 +939,14 @@ export default function App() {
       }
 
       const selectedBankers = bankers.sort((a,b)=>a-b);
-      const selectedLegs = legs.sort((a,b)=>a-b);
-      const actualCost = isBanker ? getCombinationsCount(selectedLegs.length, 6 - bCount) * 10 : 10;
+      const selectedLegsSorted = legs.sort((a,b)=>a-b);
+      const actualCost = isBanker ? getCombinationsCount(selectedLegsSorted.length, 6 - bCount) * 10 : 10;
 
       newBets.push({
         id: `unselected-cover-${Date.now()}-${i}`,
-        numbers: [...selectedBankers, ...selectedLegs],
+        numbers: [...selectedBankers, ...selectedLegsSorted],
         explanations: isBanker 
-          ? [`全包未選號碼 [第 ${i+1} 組]：精華 ${bCount} 膽拖 ${selectedLegs.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
+          ? [`全包未選號碼 [第 ${i+1} 組]：精華 ${bCount} 膽拖 ${selectedLegsSorted.length} 腳，以冷門號碼補足您預算，成本 $${actualCost}。`]
           : [`單式全覆蓋 [第 ${i+1} 組]：因預算限制，為您挑選了包含未選號碼的組合，成本 $10。`],
         type: isBanker ? 'banker' : 'standard',
         isBankerLegs: isBanker,
@@ -1084,50 +1142,15 @@ export default function App() {
         ]);
 
         const betsCountToGenerate = aiBankerBetCount || 1;
-        const individualBudget = Math.floor(aiBankerBudget / betsCountToGenerate);
+        const configs = generateBankerConfigs(aiBankerBudget, betsCountToGenerate);
 
         for (let i = 0; i < betsCountToGenerate; i++) {
-          // Dynamic variety & strict compliance config selector to avoid "劃一全部生成 5 膽 2 腳" or invalid "4 膽 2 腳".
-          // We cycle target banker counts [4, 3, 2] to ensure rich diversity.
-          let b = [4, 3, 2][i % 3];
-          let minLegs = Math.max(2, 7 - b);
-          let minCost = getCombinationsCount(minLegs, 6 - b) * 10;
-
-          // If individualBudget is too small to afford the current configuration,
-          // let's try to adjust b to something cheaper that fits, if possible.
-          if (minCost > individualBudget && individualBudget >= 20) {
-            const alternatives = [4, 3, 2];
-            for (const altB of alternatives) {
-              const altMinLegs = Math.max(2, 7 - altB);
-              const altCost = getCombinationsCount(altMinLegs, 6 - altB) * 10;
-              if (altCost <= individualBudget) {
-                b = altB;
-                minLegs = altMinLegs;
-                minCost = altCost;
-                break;
-              }
-            }
-          }
-
-          let targetL = minLegs;
-          let currentCost = minCost;
-          // Max expansion within budget (if budget is larger, we can buy more legs up to 40)
-          for (let l = minLegs + 1; l <= 40; l++) {
-            const cost = getCombinationsCount(l, 6 - b) * 10;
-            if (cost <= individualBudget) {
-              targetL = l;
-              currentCost = cost;
-            } else {
-              break;
-            }
-          }
-
-          let bestConfig = { bCount: b, legsLength: targetL, cost: currentCost };
+          const bestConfig = configs[i];
           
           const rawBets = generateBets({
             ...baseGenerateOptions,
             complexRecentStrategy: { enabled: true, excludeRanges: [{ start: 1, end: 2 }], includeRanges: [] },
-            count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2),
+            count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2 || 6),
             aiStrategy: i % 2 === 0 ? "balanced" : "cold", // Mix strategies
           });
           
@@ -1137,9 +1160,9 @@ export default function App() {
           while (selectedNums.length < targetTotal) {
              const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
              for (const n of nextRanked) {
-               if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
-                 selectedNums.push(n);
-               }
+                if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
+                  selectedNums.push(n);
+                }
              }
           }
           selectedNums.sort(() => Math.random() - 0.5);
@@ -1147,7 +1170,7 @@ export default function App() {
           const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
           const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
           
-          const isBanker = bankers.length > 0 && legs.length >= 2 && (bankers.length + legs.length >= 7);
+          const isBanker = bestConfig.isBanker && bankers.length > 0 && legs.length >= 2 && (bankers.length + legs.length >= 7);
           allBets.push({
             numbers: [...bankers, ...legs],
             explanations: isBanker
