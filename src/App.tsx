@@ -651,6 +651,87 @@ export default function App() {
     }
   }, [analysisDrawIndex]);
 
+  // Reactive Safety Net to guarantee that all generated bets conform to strict HKJC Banker-Leg rules:
+  // (Banker count 1-5, Legs count >= 2, total numbers >= 7).
+  // If a bet fails, it is automatically downgraded to a standard single bet (with isBankerLegs = false, bankersCount = 0).
+  useEffect(() => {
+    let changed = false;
+    const checkAndSanitize = (bets: any[]) => {
+      return bets.map(bet => {
+        if (bet.isBankerLegs && bet.bankersCount) {
+          const bCount = bet.bankersCount;
+          const bankers = bet.numbers.slice(0, bCount);
+          const legs = bet.numbers.slice(bCount);
+          const bankersLength = bankers.length;
+          const legsLength = legs.length;
+
+          if (bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7) {
+            changed = true;
+            return {
+              ...bet,
+              isBankerLegs: false,
+              bankersCount: 0,
+              type: "standard",
+              explanations: [
+                ...(bet.explanations || []).map((exp: string) => 
+                  exp.replace(/精選 \d+膽 \d+腳/g, "單式組合")
+                     .replace(/精華 \d+ 膽拖 \d+ 腳/g, "單式組合")
+                     .replace(/膽拖投注/g, "單式投注")
+                ),
+                "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+              ]
+            };
+          }
+        }
+        return bet;
+      });
+    };
+
+    const sanitizedGenerated = checkAndSanitize(generatedBets);
+    if (changed) {
+      setGeneratedBets(sanitizedGenerated);
+    }
+  }, [generatedBets]);
+
+  useEffect(() => {
+    let changed = false;
+    const checkAndSanitize = (bets: any[]) => {
+      return bets.map(bet => {
+        if (bet.isBankerLegs && bet.bankersCount) {
+          const bCount = bet.bankersCount;
+          const bankers = bet.numbers.slice(0, bCount);
+          const legs = bet.numbers.slice(bCount);
+          const bankersLength = bankers.length;
+          const legsLength = legs.length;
+
+          if (bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7) {
+            changed = true;
+            return {
+              ...bet,
+              isBankerLegs: false,
+              bankersCount: 0,
+              type: "standard",
+              explanations: [
+                ...(bet.explanations || []).map((exp: string) => 
+                  exp.replace(/精選 \d+膽 \d+腳/g, "單式組合")
+                     .replace(/精華 \d+ 膽拖 \d+ 腳/g, "單式組合")
+                     .replace(/膽拖投注/g, "單式投注")
+                ),
+                "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+              ]
+            };
+          }
+        }
+        return bet;
+      });
+    };
+
+    const sanitizedSpecial = checkAndSanitize(specialCoverBets);
+    if (changed) {
+      setSpecialCoverBets(sanitizedSpecial);
+    }
+  }, [specialCoverBets]);
+
   const resetSettings = () => {
     setBetCount(6);
     setSumRange([21, 279]);
@@ -1044,11 +1125,14 @@ export default function App() {
           const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
           const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
           
+          const isBanker = bankers.length > 0 && legs.length >= 2 && (bankers.length + legs.length >= 7);
           allBets.push({
             numbers: [...bankers, ...legs],
-            explanations: [`AI 智能膽拖配搭 [第 ${i+1} 組]：精選 ${bankers.length}膽 ${legs.length}腳，結合冷熱分佈機制，成本 $${bestConfig.cost}，大幅提升覆蓋率！`],
-            isBankerLegs: true,
-            bankersCount: bankers.length
+            explanations: isBanker
+              ? [`AI 智能膽拖配搭 [第 ${i+1} 組]：精選 ${bankers.length}膽 ${legs.length}腳，結合冷熱分佈機制，成本 $${bestConfig.cost}，大幅提升覆蓋率！`]
+              : [`AI 智能普通選號 [第 ${i+1} 組]：因預算限制，為您挑選了優化單式號碼組合，成本 $10。`],
+            isBankerLegs: isBanker,
+            bankersCount: isBanker ? bankers.length : 0
           });
         }
       } else {
@@ -2041,6 +2125,54 @@ export default function App() {
           return false;
         };
 
+        const getSectionContainer = (section, docObj) => {
+          const word = section === 'bankers' ? '膽' : '配腳';
+          const engWord = section === 'bankers' ? 'Banker' : 'Leg';
+          let bestContainer = null;
+          let bestScore = -1;
+          try {
+            const allEls = docObj.querySelectorAll('div, section, ul, form, td');
+            for (let i = 0; i < allEls.length; i++) {
+              const el = allEls[i];
+              if (!el) continue;
+              let rect;
+              try { rect = el.getBoundingClientRect(); } catch(e) { continue; }
+              if (rect.width === 0 || rect.height === 0) continue;
+              const textContent = el.textContent || "";
+              const hasCnHdr = textContent.includes(word);
+              const hasEnHdr = textContent.toLowerCase().includes(engWord.toLowerCase());
+              if (!hasCnHdr && !hasEnHdr) continue;
+              
+              let ballCount = 0;
+              const children = el.querySelectorAll('*');
+              for (let j = 0; j < children.length; j++) {
+                const child = children[j];
+                if (!child) continue;
+                const childText = (child.textContent || "").trim();
+                const num = parseInt(childText, 10);
+                if (num >= 1 && num <= 49 && childText === num.toString()) {
+                  let crect;
+                  try { crect = child.getBoundingClientRect(); } catch(e) { continue; }
+                  if (crect.width > 0 && crect.height > 0) {
+                    ballCount++;
+                  }
+                }
+              }
+              if (ballCount >= 6) {
+                let score = ballCount;
+                if (hasCnHdr) score += 100;
+                if (hasEnHdr) score += 50;
+                score += (10000 / (rect.height || 1));
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestContainer = el;
+                }
+              }
+            }
+          } catch(e){}
+          return bestContainer;
+        };
+
         let count = 0;
         for(const bet of bets){
           for (const section of ['bankers', 'legs']) {
@@ -2079,7 +2211,7 @@ export default function App() {
                 }
               } catch(e){}
             }
-            await sleep(600);
+            await sleep(650);
 
             for(const num of arr){
               const str = num.toString();
@@ -2088,8 +2220,11 @@ export default function App() {
               const frames = getFrames(window);
               for(let {w, d} of frames) {
                   try {
-                      const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
-                      const els = d.evaluate(xp, d, null, 7, null);
+                      const container = getSectionContainer(section, d);
+                      const xp = container 
+                        ? ".//*[(normalize-space(text())='" + str + "' or normalize-space(text())='" + pad + "') and not(*)] | .//*[(normalize-space(.)='" + str + "' or normalize-space(.)='" + pad + "')]"
+                        : "//*[(normalize-space(text())='" + str + "' or normalize-space(text())='" + pad + "') and not(*)] | //*[(normalize-space(.)='" + str + "' or normalize-space(.)='" + pad + "')]";
+                      const els = d.evaluate(xp, container || d, null, 7, null);
                       let targetEl = null;
                       for(let i=0; i<els.snapshotLength; i++){
                         const el = els.snapshotItem(i);
@@ -2119,7 +2254,7 @@ export default function App() {
                   } catch(e){}
               }
               if (!clicked) console.log("找不到號碼: " + str);
-              await sleep(700);
+              await sleep(750);
             }
           }
           await sleep(2000);
@@ -2213,6 +2348,54 @@ export default function App() {
           return false;
         };
 
+        const getSectionContainer = (section, docObj) => {
+          const word = section === 'bankers' ? '膽' : '配腳';
+          const engWord = section === 'bankers' ? 'Banker' : 'Leg';
+          let bestContainer = null;
+          let bestScore = -1;
+          try {
+            const allEls = docObj.querySelectorAll('div, section, ul, form, td');
+            for (let i = 0; i < allEls.length; i++) {
+              const el = allEls[i];
+              if (!el) continue;
+              let rect;
+              try { rect = el.getBoundingClientRect(); } catch(e) { continue; }
+              if (rect.width === 0 || rect.height === 0) continue;
+              const textContent = el.textContent || "";
+              const hasCnHdr = textContent.includes(word);
+              const hasEnHdr = textContent.toLowerCase().includes(engWord.toLowerCase());
+              if (!hasCnHdr && !hasEnHdr) continue;
+              
+              let ballCount = 0;
+              const children = el.querySelectorAll('*');
+              for (let j = 0; j < children.length; j++) {
+                const child = children[j];
+                if (!child) continue;
+                const childText = (child.textContent || "").trim();
+                const num = parseInt(childText, 10);
+                if (num >= 1 && num <= 49 && childText === num.toString()) {
+                  let crect;
+                  try { crect = child.getBoundingClientRect(); } catch(e) { continue; }
+                  if (crect.width > 0 && crect.height > 0) {
+                    ballCount++;
+                  }
+                }
+              }
+              if (ballCount >= 6) {
+                let score = ballCount;
+                if (hasCnHdr) score += 100;
+                if (hasEnHdr) score += 50;
+                score += (10000 / (rect.height || 1));
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestContainer = el;
+                }
+              }
+            }
+          } catch(e){}
+          return bestContainer;
+        };
+
         let count = 0;
         for(const bet of bets){
           for (const section of ['bankers', 'legs']) {
@@ -2248,13 +2431,16 @@ export default function App() {
                 if (clickedTab) break;
               }
             } catch(e){}
-            await sleep(600);
+            await sleep(650);
 
+            const container = getSectionContainer(section, document);
             for(const num of arr){
               const str = num.toString();
               const pad = num < 10 ? '0'+num : str;
-              const xp = "//*[(normalize-space(text())='"+str+"' or normalize-space(text())='"+pad+"') and not(*)] | //*[(normalize-space(.)='"+str+"' or normalize-space(.)='"+pad+"')]";
-              const els = document.evaluate(xp, document, null, 7, null);
+              const xp = container 
+                ? ".//*[(normalize-space(text())='" + str + "' or normalize-space(text())='" + pad + "') and not(*)] | .//*[(normalize-space(.)='" + str + "' or normalize-space(.)='" + pad + "')]"
+                : "//*[(normalize-space(text())='" + str + "' or normalize-space(text())='" + pad + "') and not(*)] | //*[(normalize-space(.)='" + str + "' or normalize-space(.)='" + pad + "')]";
+              const els = document.evaluate(xp, container || document, null, 7, null);
               let clicked = false;
               let targetEl = null;
 
@@ -2288,10 +2474,10 @@ export default function App() {
               }
 
               if (!clicked) console.log("找不到號碼: " + str);
-              await sleep(800);
+              await sleep(850);
             }
           }
-          await sleep(1500);
+          await sleep(2000);
           
           let clickedAdd = false;
           const exactXp = "//*[normalize-space(.)='添加到投注區' or normalize-space(.)='加入注項' or @alt='添加到投注區' or @alt='加入注項'] | //*[contains(translate(text(), ' ', ''), '添加到投注區') or contains(translate(text(), ' ', ''), '加入注項')]";
@@ -2319,7 +2505,7 @@ export default function App() {
           }
           
           if(clickedAdd) count++;
-          await sleep(4000);
+          await sleep(5000);
         }
         alert("拖膽手機版點擊完成！共嘗試輸入 " + count + " 注。請核對投注區內容。");
       })();`;
@@ -4754,7 +4940,7 @@ export default function App() {
                             className="flex ml-1 bg-[#FFE867] px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded sm:rounded-md border-2 sm:border-[3px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1.5px] hover:translate-x-[1.5px] hover:shadow-none active:shadow-none transition-all items-center justify-center shrink-0 outline-none focus:outline-none"
                             title="期數分析"
                           >
-                            <span className="font-black text-xs sm:text-sm whitespace-nowrap text-black">分析</span>
+                            <span className="font-black text-xs sm:text-sm whitespace-nowrap text-black">每期分析</span>
                           </button>
                         </div>
                       </div>
