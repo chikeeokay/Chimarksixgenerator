@@ -653,6 +653,7 @@ export default function App() {
 
   // Reactive Safety Net to guarantee that all generated bets conform to strict HKJC Banker-Leg rules:
   // (Banker count 1-5, Legs count >= 2, total numbers >= 7).
+  // Also ensures that 5 Bankers 2 Legs (5膽2腳) (which is blocked by user request) is automatically transformed.
   // If a bet fails, it is automatically downgraded to a standard single bet (with isBankerLegs = false, bankersCount = 0).
   useEffect(() => {
     let changed = false;
@@ -665,7 +666,8 @@ export default function App() {
           const bankersLength = bankers.length;
           const legsLength = legs.length;
 
-          if (bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7) {
+          const isInvalid = bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7 || (bankersLength === 5 && legsLength === 2);
+          if (isInvalid) {
             changed = true;
             return {
               ...bet,
@@ -678,7 +680,9 @@ export default function App() {
                      .replace(/精華 \d+ 膽拖 \d+ 腳/g, "單式組合")
                      .replace(/膽拖投注/g, "單式投注")
                 ),
-                "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                (bankersLength === 5 && legsLength === 2)
+                  ? "⚠️ 系統自動優化：應您的特別設定，系統已停止使用「5 膽 2 腳」組合，並為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                  : "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
               ]
             };
           }
@@ -704,7 +708,8 @@ export default function App() {
           const bankersLength = bankers.length;
           const legsLength = legs.length;
 
-          if (bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7) {
+          const isInvalid = bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7 || (bankersLength === 5 && legsLength === 2);
+          if (isInvalid) {
             changed = true;
             return {
               ...bet,
@@ -717,7 +722,9 @@ export default function App() {
                      .replace(/精華 \d+ 膽拖 \d+ 腳/g, "單式組合")
                      .replace(/膽拖投注/g, "單式投注")
                 ),
-                "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                (bankersLength === 5 && legsLength === 2)
+                  ? "⚠️ 系統自動優化：應您的特別設定，系統已停止使用「5 膽 2 腳」組合，並為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                  : "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
               ]
             };
           }
@@ -802,52 +809,77 @@ export default function App() {
       let bankers: number[] = [];
       let legs: number[] = [];
       
-      // Determine random banker count (2 to 4)
-      const targetBCount = Math.floor(Math.random() * 3) + 2; // 2, 3, or 4
-      
+      // Cycle target banker counts for perfect variety and to prevent uniform configurations
+      let targetBCount = [5, 4, 3, 2][i % 4];
+      let minLegsRequired = Math.max(2, 7 - targetBCount);
+      if (targetBCount === 5) {
+        minLegsRequired = 3; // Prevent 5膽2腳 by requesting at least 3 legs
+      }
+      let minCost = getCombinationsCount(minLegsRequired, 6 - targetBCount) * 10;
+
+      // Adjust target banker count if budget is tight but still enough for a banker bet
+      if (minCost > individualBudget && individualBudget >= 20) {
+        const alternatives = [5, 4, 3, 2];
+        for (const altB of alternatives) {
+          let altMinLegs = Math.max(2, 7 - altB);
+          if (altB === 5) {
+            altMinLegs = 3; // Prevent 5膽2腳
+          }
+          const altCost = getCombinationsCount(altMinLegs, 6 - altB) * 10;
+          if (altCost <= individualBudget) {
+            targetBCount = altB;
+            minLegsRequired = altMinLegs;
+            minCost = altCost;
+            break;
+          }
+        }
+      }
+
+      if (individualBudget < 20) {
+        isBanker = false;
+      }
+
       // Determine bankers for this bet
-      if (shuffledUnselected.length <= targetBCount) {
-        bankers = [...shuffledUnselected];
-      } else {
-        // Pick targetBCount bankers with wrap-around shift to diversify bankers and partition the risk
-        for (let j = 0; j < targetBCount; j++) {
-          const idx = (i * targetBCount + j) % shuffledUnselected.length;
-          bankers.push(shuffledUnselected[idx]);
-        }
-      }
-
-      const remainingUnselected = shuffledUnselected.filter(n => !bankers.includes(n));
-      const bCount = bankers.length;
-      
-      let maxAffordableLegs = Math.floor(individualBudget / 10);
-      let maxLegs = 6 - bCount;
-      while (getCombinationsCount(maxLegs + 1, 6 - bCount) * 10 <= individualBudget && maxLegs + 1 <= 49 - bCount) {
-        maxLegs++;
-      }
-
-      if (individualBudget < 10) {
-        bankers = [];
-        legs = shuffledUnselected.slice(0, 6);
-        isBanker = false;
-      } else if (bCount === 0 || bCount >= 6) {
-        bankers = [];
-        legs = shuffledUnselected.slice(0, 6);
-        isBanker = false;
-      } else {
-        let requiredLegs = remainingUnselected;
-        let N = Math.min(requiredLegs.length, maxLegs);
-        
-        if (maxLegs > requiredLegs.length) {
-          const extraCount = maxLegs - requiredLegs.length;
-          legs = [...requiredLegs, ...availableExtras.slice(0, extraCount)];
+      if (isBanker) {
+        if (shuffledUnselected.length <= targetBCount) {
+          bankers = [...shuffledUnselected];
         } else {
-          legs = requiredLegs.slice(0, N);
+          // Pick targetBCount bankers with wrap-around shift to diversify bankers and partition the risk
+          for (let j = 0; j < targetBCount; j++) {
+            const idx = (i * targetBCount + j) % shuffledUnselected.length;
+            bankers.push(shuffledUnselected[idx]);
+          }
+        }
+      }
+
+      const bCount = bankers.length;
+
+      if (!isBanker || bCount === 0 || bCount >= 6) {
+        isBanker = false;
+        bankers = [];
+        legs = shuffledUnselected.slice(0, 6);
+      } else {
+        const remainingUnselected = shuffledUnselected.filter(n => !bankers.includes(n));
+        
+        let maxLegs = minLegsRequired;
+        while (getCombinationsCount(maxLegs + 1, 6 - bCount) * 10 <= individualBudget && maxLegs + 1 <= 49 - bCount) {
+          maxLegs++;
+        }
+
+        let selectCount = Math.min(remainingUnselected.length, maxLegs);
+        let selectedLegs = remainingUnselected.slice(0, selectCount);
+        
+        if (selectedLegs.length < maxLegs) {
+          const extraCount = maxLegs - selectedLegs.length;
+          selectedLegs.push(...availableExtras.filter(n => !bankers.includes(n) && !selectedLegs.includes(n)).slice(0, extraCount));
         }
         
-        const neededLegs = 6 - bCount;
-        if (legs.length < neededLegs) {
-          legs.push(...availableExtras.slice(0, neededLegs - legs.length));
+        if (selectedLegs.length < minLegsRequired) {
+          const shortage = minLegsRequired - selectedLegs.length;
+          selectedLegs.push(...availableExtras.filter(n => !bankers.includes(n) && !selectedLegs.includes(n)).slice(0, shortage));
         }
+        
+        legs = selectedLegs;
       }
 
       if (isBanker && (bankers.length === 0 || legs.length < 2 || bankers.length + legs.length < 7)) {
@@ -1061,46 +1093,48 @@ export default function App() {
         const individualBudget = Math.floor(aiBankerBudget / betsCountToGenerate);
 
         for (let i = 0; i < betsCountToGenerate; i++) {
-          // Find a valid configuration (bCount, legsLength) that fits budget and satisfies HKJC rules:
-          // 1. bCount + legsLength >= 7 (total numbers must be at least 7)
-          // 2. legsLength >= 2 (if bCount is 5, legsLength must be at least 2 to satisfy total >= 7)
-          // 3. cost <= individualBudget
-          let bestConfig = { bCount: 5, legsLength: 2, cost: 20 };
-          let found = false;
-          
-          // Randomize option order to make generated bets diverse and interesting
-          const bCountOptions = [2, 3, 4, 5].sort(() => Math.random() - 0.5);
-          
-          for (const b of bCountOptions) {
-            const minLegs = 7 - b;
-            const minCost = getCombinationsCount(minLegs, 6 - b) * 10;
-            if (minCost <= individualBudget) {
-              let targetL = minLegs;
-              let currentCost = minCost;
-              for (let l = minLegs + 1; l <= 40; l++) {
-                const cost = getCombinationsCount(l, 6 - b) * 10;
-                if (cost <= individualBudget) {
-                  targetL = l;
-                  currentCost = cost;
-                } else {
-                  break;
-                }
+          // Dynamic variety & strict compliance config selector to avoid "劃一全部生成 5 膽 2 腳" or invalid "4 膽 2 腳".
+          // We cycle target banker counts [5, 4, 3, 2] to ensure rich diversity.
+          let b = [5, 4, 3, 2][i % 4];
+          let minLegs = Math.max(2, 7 - b);
+          if (b === 5) {
+            minLegs = 3; // Prevent 5膽2腳 by requesting at least 3 legs
+          }
+          let minCost = getCombinationsCount(minLegs, 6 - b) * 10;
+
+          // If individualBudget is too small to afford the current configuration,
+          // let's try to adjust b to something cheaper that fits, if possible.
+          if (minCost > individualBudget && individualBudget >= 20) {
+            const alternatives = [5, 4, 3, 2];
+            for (const altB of alternatives) {
+              let altMinLegs = Math.max(2, 7 - altB);
+              if (altB === 5) {
+                altMinLegs = 3; // Prevent 5膽2腳
               }
-              if (!found || currentCost > bestConfig.cost) {
-                bestConfig = { bCount: b, legsLength: targetL, cost: currentCost };
-                found = true;
+              const altCost = getCombinationsCount(altMinLegs, 6 - altB) * 10;
+              if (altCost <= individualBudget) {
+                b = altB;
+                minLegs = altMinLegs;
+                minCost = altCost;
+                break;
               }
             }
           }
-          
-          // If no configuration fits within individualBudget (e.g. budget is < $20),
-          // fallback to the absolute minimum valid Banker-Leg bet (e.g. 5 Bankers + 2 Legs, costing $20, or 4 Bankers + 3 Legs)
-          if (!found) {
-            const b = Math.floor(Math.random() * 4) + 2; // 2, 3, 4, or 5
-            const minLegs = 7 - b;
-            const minCost = getCombinationsCount(minLegs, 6 - b) * 10;
-            bestConfig = { bCount: b, legsLength: minLegs, cost: minCost };
+
+          let targetL = minLegs;
+          let currentCost = minCost;
+          // Max expansion within budget (if budget is larger, we can buy more legs up to 40)
+          for (let l = minLegs + 1; l <= 40; l++) {
+            const cost = getCombinationsCount(l, 6 - b) * 10;
+            if (cost <= individualBudget) {
+              targetL = l;
+              currentCost = cost;
+            } else {
+              break;
+            }
           }
+
+          let bestConfig = { bCount: b, legsLength: targetL, cost: currentCost };
           
           const rawBets = generateBets({
             ...baseGenerateOptions,
