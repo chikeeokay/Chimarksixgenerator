@@ -652,8 +652,8 @@ export default function App() {
   }, [analysisDrawIndex]);
 
   // Reactive Safety Net to guarantee that all generated bets conform to strict HKJC Banker-Leg rules:
-  // (Banker count 1-5, Legs count >= 2, total numbers >= 7).
-  // Also ensures that 5 Bankers 2 Legs (5膽2腳) (which is blocked by user request) is automatically transformed.
+  // (Banker count 1-4, Legs count >= 2, total numbers >= 7).
+  // Also ensures that 5 Bankers is forbidden and 4 Bankers 2 Legs is invalid.
   // If a bet fails, it is automatically downgraded to a standard single bet (with isBankerLegs = false, bankersCount = 0).
   useEffect(() => {
     let changed = false;
@@ -666,7 +666,7 @@ export default function App() {
           const bankersLength = bankers.length;
           const legsLength = legs.length;
 
-          const isInvalid = bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7 || (bankersLength === 5 && legsLength === 2);
+          const isInvalid = bankersLength < 1 || bankersLength > 4 || legsLength < Math.max(2, 7 - bankersLength);
           if (isInvalid) {
             changed = true;
             return {
@@ -680,9 +680,9 @@ export default function App() {
                      .replace(/精華 \d+ 膽拖 \d+ 腳/g, "單式組合")
                      .replace(/膽拖投注/g, "單式投注")
                 ),
-                (bankersLength === 5 && legsLength === 2)
-                  ? "⚠️ 系統自動優化：應您的特別設定，系統已停止使用「5 膽 2 腳」組合，並為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
-                  : "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                bankersLength === 5
+                  ? "⚠️ 系統自動優化：應您的特別設定，系統已停止使用「5 膽」組合，並為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                  : "⚠️ 系統自動優化：因此組合不符合限制（4 膽至少需 3 腳，3 膽至少 4 腳，2 膽至少 5 腳，且拒絕 5 膽），系統已自動為您智能轉換為標準單式注項。"
               ]
             };
           }
@@ -708,7 +708,7 @@ export default function App() {
           const bankersLength = bankers.length;
           const legsLength = legs.length;
 
-          const isInvalid = bankersLength < 1 || bankersLength > 5 || legsLength < 2 || bankersLength + legsLength < 7 || (bankersLength === 5 && legsLength === 2);
+          const isInvalid = bankersLength < 1 || bankersLength > 4 || legsLength < Math.max(2, 7 - bankersLength);
           if (isInvalid) {
             changed = true;
             return {
@@ -722,9 +722,9 @@ export default function App() {
                      .replace(/精華 \d+ 膽拖 \d+ 腳/g, "單式組合")
                      .replace(/膽拖投注/g, "單式投注")
                 ),
-                (bankersLength === 5 && legsLength === 2)
-                  ? "⚠️ 系統自動優化：應您的特別設定，系統已停止使用「5 膽 2 腳」組合，並為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
-                  : "⚠️ 系統自動優化：因此組合不符合香港賽馬會「膽拖至少 7 個號碼且配腳至少 2 個」的規則，系統已為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                bankersLength === 5
+                  ? "⚠️ 系統自動優化：應您的特別設定，系統已停止使用「5 膽」組合，並為您智能轉換為標準單式注項（不影響號碼覆蓋）。"
+                  : "⚠️ 系統自動優化：因此組合不符合限制（4 膽至少需 3 腳，3 膽至少 4 腳，2 膽至少 5 腳，且拒絕 5 膽），系統已自動為您智能轉換為標準單式注項。"
               ]
             };
           }
@@ -810,21 +810,15 @@ export default function App() {
       let legs: number[] = [];
       
       // Cycle target banker counts for perfect variety and to prevent uniform configurations
-      let targetBCount = [5, 4, 3, 2][i % 4];
+      let targetBCount = [4, 3, 2][i % 3];
       let minLegsRequired = Math.max(2, 7 - targetBCount);
-      if (targetBCount === 5) {
-        minLegsRequired = 3; // Prevent 5膽2腳 by requesting at least 3 legs
-      }
       let minCost = getCombinationsCount(minLegsRequired, 6 - targetBCount) * 10;
 
       // Adjust target banker count if budget is tight but still enough for a banker bet
       if (minCost > individualBudget && individualBudget >= 20) {
-        const alternatives = [5, 4, 3, 2];
+        const alternatives = [4, 3, 2];
         for (const altB of alternatives) {
-          let altMinLegs = Math.max(2, 7 - altB);
-          if (altB === 5) {
-            altMinLegs = 3; // Prevent 5膽2腳
-          }
+          const altMinLegs = Math.max(2, 7 - altB);
           const altCost = getCombinationsCount(altMinLegs, 6 - altB) * 10;
           if (altCost <= individualBudget) {
             targetBCount = altB;
@@ -1094,23 +1088,17 @@ export default function App() {
 
         for (let i = 0; i < betsCountToGenerate; i++) {
           // Dynamic variety & strict compliance config selector to avoid "劃一全部生成 5 膽 2 腳" or invalid "4 膽 2 腳".
-          // We cycle target banker counts [5, 4, 3, 2] to ensure rich diversity.
-          let b = [5, 4, 3, 2][i % 4];
+          // We cycle target banker counts [4, 3, 2] to ensure rich diversity.
+          let b = [4, 3, 2][i % 3];
           let minLegs = Math.max(2, 7 - b);
-          if (b === 5) {
-            minLegs = 3; // Prevent 5膽2腳 by requesting at least 3 legs
-          }
           let minCost = getCombinationsCount(minLegs, 6 - b) * 10;
 
           // If individualBudget is too small to afford the current configuration,
           // let's try to adjust b to something cheaper that fits, if possible.
           if (minCost > individualBudget && individualBudget >= 20) {
-            const alternatives = [5, 4, 3, 2];
+            const alternatives = [4, 3, 2];
             for (const altB of alternatives) {
-              let altMinLegs = Math.max(2, 7 - altB);
-              if (altB === 5) {
-                altMinLegs = 3; // Prevent 5膽2腳
-              }
+              const altMinLegs = Math.max(2, 7 - altB);
               const altCost = getCombinationsCount(altMinLegs, 6 - altB) * 10;
               if (altCost <= individualBudget) {
                 b = altB;
