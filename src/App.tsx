@@ -980,21 +980,46 @@ export default function App() {
         const individualBudget = Math.floor(aiBankerBudget / betsCountToGenerate);
 
         for (let i = 0; i < betsCountToGenerate; i++) {
-          const chosenB = Math.floor(Math.random() * 3) + 2; // Randomly 2 to 4 bankers
-          let targetL = 6 - chosenB;
-          let currentCost = 10;
+          // Find a valid configuration (bCount, legsLength) that fits budget and satisfies HKJC rules:
+          // 1. bCount + legsLength >= 7 (total numbers must be at least 7)
+          // 2. legsLength >= 2 (if bCount is 5, legsLength must be at least 2 to satisfy total >= 7)
+          // 3. cost <= individualBudget
+          let bestConfig = { bCount: 5, legsLength: 2, cost: 20 };
+          let found = false;
           
-          for (let l = 6 - chosenB + 1; l <= 40; l++) {
-            const cost = getCombinationsCount(l, 6 - chosenB) * 10;
-            if (cost <= individualBudget) {
-              targetL = l;
-              currentCost = cost;
-            } else {
-              break;
+          // Randomize option order to make generated bets diverse and interesting
+          const bCountOptions = [2, 3, 4, 5].sort(() => Math.random() - 0.5);
+          
+          for (const b of bCountOptions) {
+            const minLegs = 7 - b;
+            const minCost = getCombinationsCount(minLegs, 6 - b) * 10;
+            if (minCost <= individualBudget) {
+              let targetL = minLegs;
+              let currentCost = minCost;
+              for (let l = minLegs + 1; l <= 40; l++) {
+                const cost = getCombinationsCount(l, 6 - b) * 10;
+                if (cost <= individualBudget) {
+                  targetL = l;
+                  currentCost = cost;
+                } else {
+                  break;
+                }
+              }
+              if (!found || currentCost > bestConfig.cost) {
+                bestConfig = { bCount: b, legsLength: targetL, cost: currentCost };
+                found = true;
+              }
             }
           }
           
-          const bestConfig = { bCount: chosenB, legsLength: targetL, cost: currentCost };
+          // If no configuration fits within individualBudget (e.g. budget is < $20),
+          // fallback to the absolute minimum valid Banker-Leg bet (e.g. 5 Bankers + 2 Legs, costing $20, or 4 Bankers + 3 Legs)
+          if (!found) {
+            const b = Math.floor(Math.random() * 4) + 2; // 2, 3, 4, or 5
+            const minLegs = 7 - b;
+            const minCost = getCombinationsCount(minLegs, 6 - b) * 10;
+            bestConfig = { bCount: b, legsLength: minLegs, cost: minCost };
+          }
           
           const rawBets = generateBets({
             ...baseGenerateOptions,
