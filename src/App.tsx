@@ -323,6 +323,7 @@ export default function App() {
       totalBets: number;
       totalCost: number;
       totalWins: number;
+      totalWinnings: number;
       winsByTier: Record<string, number>;
     };
   } | null>(null);
@@ -343,6 +344,7 @@ export default function App() {
       isWin: boolean;
     }[] = [];
     let totalWins = 0;
+    let totalWinnings = 0;
     const winsByTier: Record<string, number> = {
       "頭獎": 0,
       "二獎": 0,
@@ -389,6 +391,25 @@ export default function App() {
 
           if (isWin) {
             totalWins++;
+            let prizeAmount = 0;
+            if (prizeTier === "頭獎") {
+              prizeAmount = (drawObj && !Array.isArray(drawObj) && drawObj.firstPrize && drawObj.firstPrize > 0) 
+                ? drawObj.firstPrize 
+                : 8000000;
+            } else if (prizeTier === "二獎") {
+              prizeAmount = 150000;
+            } else if (prizeTier === "三獎") {
+              prizeAmount = 40000;
+            } else if (prizeTier === "四獎") {
+              prizeAmount = 9600;
+            } else if (prizeTier === "五獎") {
+              prizeAmount = 640;
+            } else if (prizeTier === "六獎") {
+              prizeAmount = 320;
+            } else if (prizeTier === "七獎") {
+              prizeAmount = 40;
+            }
+            totalWinnings += prizeAmount;
           }
           winsByTier[prizeTier] = (winsByTier[prizeTier] || 0) + 1;
 
@@ -412,6 +433,7 @@ export default function App() {
         totalBets,
         totalCost: totalBets * 10,
         totalWins,
+        totalWinnings,
         winsByTier
       }
     });
@@ -6902,7 +6924,7 @@ export default function App() {
               <div className="space-y-4">
                 
                 {/* Bento Statistics Banner */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   <div className="border-3 border-black rounded-xl p-3 bg-[#e0f2fe] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
                     <div className="text-zinc-600 text-xs sm:text-sm font-black">已核對總注數</div>
                     <div className="text-2xl sm:text-3xl font-black text-sky-600 mt-1">{backtestResults.summary.totalBets} <span className="text-sm text-zinc-800">注</span></div>
@@ -6915,7 +6937,11 @@ export default function App() {
                     <div className="text-zinc-600 text-xs sm:text-sm font-black">總中獎注數</div>
                     <div className="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">{backtestResults.summary.totalWins} <span className="text-sm text-zinc-800">注</span></div>
                   </div>
-                  <div className="border-3 border-black rounded-xl p-3 bg-[#fdf2f8] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                  <div className="border-3 border-black rounded-xl p-3 bg-[#faf5ff] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="text-zinc-600 text-xs sm:text-sm font-black">總中獎金額</div>
+                    <div className="text-2xl sm:text-3xl font-black text-purple-600 mt-1">${backtestResults.summary.totalWinnings.toLocaleString()}</div>
+                  </div>
+                  <div className="border-3 border-black rounded-xl p-3 bg-[#fdf2f8] text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] col-span-2 sm:col-span-1">
                     <div className="text-zinc-600 text-xs sm:text-sm font-black">組合中獎率</div>
                     <div className="text-2xl sm:text-3xl font-black text-rose-600 mt-1">
                       {backtestResults.summary.totalBets > 0 
