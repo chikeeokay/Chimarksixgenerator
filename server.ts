@@ -294,7 +294,7 @@ IMPORTANT RULES:
           body: JSON.stringify({ query, operationName: "marksixDraw" })
         }, 3000);
         
-        const hkjcData = await hkjcRes.json();
+        const hkjcData = (await hkjcRes.json()) as any;
         const lotteryDraws = hkjcData?.data?.lotteryDraws || [];
         
         for (const draw of lotteryDraws) {

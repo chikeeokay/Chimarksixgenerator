@@ -1469,8 +1469,8 @@ export default function App() {
 
         const bankerMatch = trimmed.match(/\[膽\](.*?)\[腳\](.*)/);
         if (bankerMatch) {
-          const bankers = Array.from(new Set((bankerMatch[1].match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= 49)));
-          const legs = Array.from(new Set((bankerMatch[2].match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= 49)));
+          const bankers: number[] = [...new Set<number>((bankerMatch[1].match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= 49))];
+          const legs: number[] = [...new Set<number>((bankerMatch[2].match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= 49))];
           
           if (bankers.length > 0 && legs.length > 0 && bankers.length + legs.length >= 6) {
              const requiredLegs = 6 - bankers.length;
