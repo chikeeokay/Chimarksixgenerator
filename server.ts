@@ -5,6 +5,23 @@ import * as cheerio from 'cheerio';
 import { MOCK_PAST_RESULTS } from "./lib/marksix.ts";
 import { GoogleGenAI } from "@google/genai";
 
+let cachedMarkSixData: any = null;
+let lastCacheTime = 0;
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -113,14 +130,26 @@ IMPORTANT RULES:
   });
 
   app.get("/api/marksix", async (req, res) => {
+    const now = Date.now();
+    if (cachedMarkSixData && (now - lastCacheTime < CACHE_TTL)) {
+      console.log("Serving Mark Six draws from cache");
+      return res.json(cachedMarkSixData);
+    }
+
     try {
       const draws: {numbers: number[], date: string, firstPrize?: number, firstPrizeWinners?: number}[] = [];
       const seen = new Set<string>();
 
       const years = [2026, 2025, 2024];
-      for (const year of years) {
+      
+      // Scrape historical years concurrently
+      await Promise.all(years.map(async (year) => {
         try {
-          const response = await fetch(`https://on99.life/lottery/history/${year}`);
+          // Use fetchWithTimeout to prevent slow network from blocking user
+          const response = await fetchWithTimeout(`https://on99.life/lottery/history/${year}`, {
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" }
+          }, 4000);
+
           if (response.ok) {
             const html = await response.text();
             const $ = cheerio.load(html);
@@ -205,9 +234,9 @@ IMPORTANT RULES:
         } catch (marksixErr) {
           console.error(`on99.life scrape failed for ${year}:`, marksixErr);
         }
-      }
+      }));
 
-      // Fallback Dates
+      // Fallback Dates if scraped results are empty
       for (const mockDrawObj of MOCK_PAST_RESULTS) {
         const mockArray = Array.isArray(mockDrawObj) ? mockDrawObj : mockDrawObj.numbers;
         const mockDate = !Array.isArray(mockDrawObj) && mockDrawObj.date ? mockDrawObj.date : `Past Draw`;
@@ -258,11 +287,13 @@ IMPORTANT RULES:
             }
           }
         }`;
-        const hkjcRes = await fetch("https://info.cld.hkjc.com/graphql/base/", {
+        // Timeout of 3000ms for HKJC GraphQL
+        const hkjcRes = await fetchWithTimeout("https://info.cld.hkjc.com/graphql/base/", {
           method: "POST",
           headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
           body: JSON.stringify({ query, operationName: "marksixDraw" })
-        });
+        }, 3000);
+        
         const hkjcData = await hkjcRes.json();
         const lotteryDraws = hkjcData?.data?.lotteryDraws || [];
         
@@ -277,23 +308,23 @@ IMPORTANT RULES:
                  };
              }
           } else if (draw.status === "Result" && draw.drawResult?.drawnNo?.length === 6) {
-             // This is a past draw, make sure it's in our draws array
-             const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
-             const drawStr = numbers.join(',');
-             if (!seen.has(drawStr)) {
-                 seen.add(drawStr);
-                 let firstPrizeWinners = 0;
-                 if (draw.lotteryPool?.lotteryPrizes) {
-                     const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
-                     if (fPrize) firstPrizeWinners = fPrize.winningUnit;
-                 }
-                 draws.push({
-                     numbers,
-                     date,
-                     firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
-                     firstPrizeWinners
-                 });
-             }
+              // This is a past draw, make sure it's in our draws array
+              const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
+              const drawStr = numbers.join(',');
+              if (!seen.has(drawStr)) {
+                  seen.add(drawStr);
+                  let firstPrizeWinners = 0;
+                  if (draw.lotteryPool?.lotteryPrizes) {
+                      const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
+                      if (fPrize) firstPrizeWinners = fPrize.winningUnit;
+                  }
+                  draws.push({
+                      numbers,
+                      date,
+                      firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
+                      firstPrizeWinners
+                  });
+              }
           }
         }
       } catch (e) {
@@ -328,7 +359,7 @@ IMPORTANT RULES:
                   lastDateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
               }
               let addDays = 2;
-              const currentDay = lastDateObj.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
+              const currentDay = lastDateObj.getDay(); 
               if (currentDay === 2) addDays = 2; // Tue -> Thu
               else if (currentDay === 4) addDays = 2; // Thu -> Sat
               else if (currentDay === 6) addDays = 3; // Sat -> Tue
@@ -347,9 +378,17 @@ IMPORTANT RULES:
           }
       }
 
-      res.json({ success: true, draws, nextDraw });
+      const responsePayload = { success: true, draws, nextDraw };
+      cachedMarkSixData = responsePayload;
+      lastCacheTime = now;
+      res.json(responsePayload);
     } catch (error: any) {
       console.error("Error fetching Mark Six info:", error);
+      // Serve stale cache if available on failure
+      if (cachedMarkSixData) {
+        console.log("Serving stale Mark Six cache due to fetch failure");
+        return res.json(cachedMarkSixData);
+      }
       res.status(500).json({ success: false, error: error.message });
     }
   });
