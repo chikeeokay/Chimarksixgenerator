@@ -185,9 +185,63 @@ IMPORTANT RULES:
       const draws: {numbers: number[], date: string, firstPrize?: number, firstPrizeWinners?: number}[] = [];
       const seen = new Set<string>();
 
+      // 1. Scrape marksixinfo.com/latest20draws (supremely accurate and format-stable in 2026)
+      try {
+        const response = await fetchWithTimeout("https://marksixinfo.com/latest20draws", {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" }
+        }, 4000);
+        if (response.ok) {
+          const html = await response.text();
+          const $ = cheerio.load(html);
+          $("p").each((i, el) => {
+            const text = $(el).text().trim();
+            if (/^\d+\/\d+$/.test(text)) {
+              const drawId = text;
+              const parentHeader = $(el).closest("div.flex.justify-between.items-center");
+              if (parentHeader.length === 0) return;
+              const dateText = $(el).next("p").text().trim();
+              const numbersDiv = parentHeader.next("div");
+              const numbers: number[] = [];
+              numbersDiv.find("div.rounded-full").each((j, ballEl) => {
+                const val = parseInt($(ballEl).text().trim());
+                if (!isNaN(val) && val >= 1 && val <= 49) {
+                  numbers.push(val);
+                }
+              });
+              if (numbers.length === 7) {
+                const dateFormatted = dateText.replace(/-/g, "/");
+                let firstPrize = 0;
+                let firstPrizeWinners = 0;
+                const detailsDiv = numbersDiv.next("div");
+                const firstPrizeContainer = detailsDiv.find("span:contains(\"頭獎\")").parent();
+                if (firstPrizeContainer.length) {
+                   const firstPrizeText = firstPrizeContainer.find("span.flex-1").text().trim();
+                   if (firstPrizeText && firstPrizeText !== "-") {
+                      const parts = firstPrizeText.split("/");
+                      firstPrize = parseInt(parts[0].replace(/[^0-9]/g, "")) || 0;
+                      if (parts[1]) firstPrizeWinners = parseFloat(parts[1].trim()) || 0;
+                   }
+                }
+                const drawStr = numbers.join(",");
+                if (!seen.has(drawStr)) {
+                  seen.add(drawStr);
+                  draws.push({
+                    numbers,
+                    date: dateFormatted,
+                    firstPrize,
+                    firstPrizeWinners
+                  });
+                }
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to scrape marksixinfo.com/latest20draws:", err);
+      }
+
+      // 2. Scrape on99.life concurrently for years (2026, 2025, 2024 history)
       const years = [2026, 2025, 2024];
-      
-      // Scrape historical years concurrently
       await Promise.all(years.map(async (year) => {
         try {
           // Use fetchWithTimeout to prevent slow network from blocking user
@@ -210,7 +264,6 @@ IMPORTANT RULES:
             const resultsIdx = allScriptSources.indexOf('\\"results\\":[');
             if (resultsIdx !== -1) {
                 const startStr = allScriptSources.slice(resultsIdx + '\\"results\\":'.length);
-                
                 const match = startStr.match(/^(\[.*?\]\]\}),\\"cacheStrategy\\"/);
                 let resultsStr = '[]';
                 if (match) {
@@ -281,7 +334,7 @@ IMPORTANT RULES:
         }
       }));
 
-      // Fallback Dates if scraped results are empty
+      // 3. Fallback Dates if scraped results are empty
       const dynamicFallbacks = generateFallbackDrawsUpToToday();
       for (const f of dynamicFallbacks) {
         const drawStr = f.numbers.join(',');
@@ -303,7 +356,48 @@ IMPORTANT RULES:
       }
       
       let nextDrawFound: any = null;
-      // Fetch 最新和下一期 from HKJC GraphQL
+
+      // 4. Scrape marksixinfo.com/ homepage directly for the exact next draw info
+      try {
+        const response = await fetchWithTimeout("https://marksixinfo.com/", {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" }
+        }, 4000);
+        if (response.ok) {
+          const html = await response.text();
+          const $ = cheerio.load(html);
+          const h = $("h2:contains(\"下期六合彩攪珠時間\")");
+          if (h.length) {
+             const parent = h.parent().parent();
+             const pDate = parent.find("p.text-gray-800").first().text().trim();
+             const pJackpot = parent.find("p:contains(\"頭獎估計\")").text().trim();
+             if (pDate) {
+                const match = pDate.match(/(\d+)年(\d+)月(\d+)日/);
+                let dateStr = "";
+                if (match) {
+                   const yyyy = match[1];
+                   const mm = match[2].padStart(2, "0");
+                   const dd = match[3].padStart(2, "0");
+                   dateStr = `${yyyy}/${mm}/${dd}`;
+                } else {
+                   dateStr = pDate.split("（")[0].trim();
+                }
+                let estJackpot = 8000000;
+                if (pJackpot) {
+                   const num = parseInt(pJackpot.replace(/[^0-9]/g, ""));
+                   if (!isNaN(num)) estJackpot = num;
+                }
+                nextDrawFound = {
+                   date: dateStr,
+                   estimatedJackpot: estJackpot
+                };
+             }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to scrape marksixinfo nextDraw:", err);
+      }
+      
+      // Fetch 最新和下一期 from HKJC GraphQL as a fallback
       try {
         const query = `query marksixDraw {
           timeOffset {
