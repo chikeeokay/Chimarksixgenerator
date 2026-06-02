@@ -324,11 +324,6 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       if (options.require3Tails && !has3Tail) {
         validCounts = false;
       }
-      if (!options.require2Tails && !options.require3Tails) {
-        if (has2Tail || has3Tail || tailCounts.some(f => f >= 4)) {
-          validCounts = false;
-        }
-      }
     }
 
     if (options.sumDistributionRange) {
@@ -427,11 +422,6 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
           }
           if (options.require3Tails && !has3Tail) {
             valid = false;
-          }
-          if (!options.require2Tails && !options.require3Tails) {
-            if (has2Tail || has3Tail || tailCounts.some(f => f >= 4)) {
-              valid = false;
-            }
           }
         }
 
