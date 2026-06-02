@@ -237,6 +237,8 @@ export default function App() {
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
   const [noConsecutivePairs, setNoConsecutivePairs] = useState(false);
   const [noConsecutiveTriplets, setNoConsecutiveTriplets] = useState(false);
+  const [require2Tails, setRequire2Tails] = useState(false);
+  const [require3Tails, setRequire3Tails] = useState(false);
   const [use2Combos, setUse2Combos] = useState(false);
   const [combo2Count, setCombo2Count] = useState<number>(1);
   const [use3Combos, setUse3Combos] = useState(false);
@@ -1074,6 +1076,8 @@ export default function App() {
         comboAnalysisDrawCount: 100,
         noConsecutivePairs: noConsecutivePairs,
         noConsecutiveTriplets: noConsecutiveTriplets,
+        require2Tails: require2Tails,
+        require3Tails: require3Tails,
         sumDistributionRange: sumRange
       });
 
@@ -1170,6 +1174,8 @@ export default function App() {
         excludeUnseenIncludeSpecial: false,
         noConsecutivePairs: false,
         noConsecutiveTriplets: false,
+        require2Tails: require2Tails,
+        require3Tails: require3Tails,
         comboAnalysisDrawCount: aiAnalysisDraws,
         enforceNormalSumDistribution: true,
         sumDistributionRange: sumRange
@@ -3317,7 +3323,7 @@ export default function App() {
                           step={1}
                           className="w-full flex-1 cursor-pointer"
                         />
-                        <span className={`flex-none flex items-center justify-center font-black aspect-square w-8 h-8 text-sm sm:text-base rounded-full border-[2.5px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] ${colors[1] === "red" ? "bg-[#FF9999] text-black" : colors[1] === "blue" ? "bg-[#99CCFF] text-black" : "bg-[#99FF99] text-black"}`}>
+                        <span className={`flex-none flex-center items-center justify-center font-black aspect-square w-8 h-8 text-sm sm:text-base rounded-full border-[2.5px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] ${colors[1] === "red" ? "bg-[#FF9999] text-black" : colors[1] === "blue" ? "bg-[#99CCFF] text-black" : "bg-[#99FF99] text-black"}`}>
                           {colors[1] === "red" ? "紅" : colors[1] === "blue" ? "藍" : "綠"}
                         </span>
                       </div>
@@ -3340,6 +3346,35 @@ export default function App() {
                       className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${noConsecutiveTriplets ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
                     >
                       不要連3號
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tail Digit Constraints */}
+                <div className="space-y-0.5">
+                  <Label className="text-base font-bold">尾數限制</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        setRequire2Tails(!require2Tails);
+                        if (!require2Tails) {
+                          setRequire3Tails(false);
+                        }
+                      }}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${require2Tails ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      要2尾（一組）
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRequire3Tails(!require3Tails);
+                        if (!require3Tails) {
+                          setRequire2Tails(false);
+                        }
+                      }}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${require3Tails ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      要3尾（一組）
                     </button>
                   </div>
                 </div>
@@ -5036,6 +5071,7 @@ export default function App() {
                           {(noConsecutivePairs || noConsecutiveTriplets) && (
                             <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                           )}
+                          <li>尾數限制: {require2Tails ? "要2尾（一組）" : require3Tails ? "要3尾（一組）" : "不要2尾或3尾"}</li>
                           {(preferredOddCount !== null || oddEven !== 'all') && (
                             <li>
                               單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}
@@ -5984,6 +6020,7 @@ export default function App() {
                   {(noConsecutivePairs || noConsecutiveTriplets) && (
                     <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                   )}
+                  <li>尾數限制: {require2Tails ? "要2尾（一組）" : require3Tails ? "要3尾（一組）" : "不要2尾或3尾"}</li>
                   {(preferredOddCount !== null || oddEven !== 'all') && (
                     <li>
                       單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}
