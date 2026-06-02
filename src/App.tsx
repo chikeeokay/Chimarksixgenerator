@@ -1223,7 +1223,7 @@ export default function App() {
             aiStrategy: i % 2 === 0 ? "balanced" : "cold", // Mix strategies
           });
           
-          const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort((a,b)=>a-b);
+          const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort(() => Math.random() - 0.5);
           const targetTotal = bestConfig.bCount + bestConfig.legsLength;
           const selectedNums = merged.slice(0, targetTotal);
           while (selectedNums.length < targetTotal) {
