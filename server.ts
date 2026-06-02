@@ -129,6 +129,21 @@ IMPORTANT RULES:
     }
   });
 
+  function normalizeDateToDDMMYYYY(dateStr: string): string {
+    if (!dateStr) return "";
+    const parts = dateStr.split(/[-/]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY, MM, DD -> DD/MM/YYYY
+        return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+      } else {
+        // DD, MM, YYYY -> DD/MM/YYYY
+        return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+      }
+    }
+    return dateStr;
+  }
+
   function getDeterministicMockDraw(dateStr: string): number[] {
     let hash = 0;
     for (let i = 0; i < dateStr.length; i++) {
@@ -151,17 +166,42 @@ IMPORTANT RULES:
   function generateFallbackDrawsUpToToday(): { numbers: number[], date: string }[] {
     const result: { numbers: number[], date: string }[] = [];
     const start = new Date("2026-04-18");
-    const today = new Date();
     
+    // Convert current UTC time to HKT (UTC+8) accurately
+    const hkTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const hkYear = hkTime.getUTCFullYear();
+    const hkMonth = hkTime.getUTCMonth(); // 0-indexed
+    const hkDate = hkTime.getUTCDate();
+    const hkHours = hkTime.getUTCHours();
+    const hkMinutes = hkTime.getUTCMinutes();
+
     let current = new Date(start);
     current.setDate(current.getDate() + 1);
     
-    while (current <= today) {
+    // We iterate up to today's date in HK
+    const hkTodayDateOnly = new Date(hkYear, hkMonth, hkDate);
+    
+    while (current <= hkTodayDateOnly) {
+      const curYear = current.getFullYear();
+      const curMonth = current.getMonth();
+      const curDate = current.getDate();
+      
       const day = current.getDay();
       if (day === 2 || day === 4 || day === 6) {
-        const yyyy = current.getFullYear();
-        const mm = String(current.getMonth() + 1).padStart(2, '0');
-        const dd = String(current.getDate()).padStart(2, '0');
+        // Double check: if it is HKT today, only include if past 21:35 (9:35 PM HKT)
+        if (curYear === hkYear && curMonth === hkMonth && curDate === hkDate) {
+          const minutesSinceMidnight = hkHours * 60 + hkMinutes;
+          const drawMinutes = 21 * 60 + 35; // 21:35
+          if (minutesSinceMidnight < drawMinutes) {
+            // Has not drawn yet today
+            current.setDate(current.getDate() + 1);
+            continue;
+          }
+        }
+        
+        const yyyy = curYear;
+        const mm = String(curMonth + 1).padStart(2, '0');
+        const dd = String(curDate).padStart(2, '0');
         const dateStr = `${dd}/${mm}/${yyyy}`;
         
         result.push({
@@ -183,7 +223,7 @@ IMPORTANT RULES:
 
     try {
       const draws: {numbers: number[], date: string, firstPrize?: number, firstPrizeWinners?: number}[] = [];
-      const seen = new Set<string>();
+      const seenDates = new Set<string>();
 
       // 1. Scrape marksixinfo.com/latest20draws (supremely accurate and format-stable in 2026)
       try {
@@ -209,25 +249,24 @@ IMPORTANT RULES:
                 }
               });
               if (numbers.length === 7) {
-                const dateFormatted = dateText.replace(/-/g, "/");
-                let firstPrize = 0;
-                let firstPrizeWinners = 0;
-                const detailsDiv = numbersDiv.next("div");
-                const firstPrizeContainer = detailsDiv.find("span:contains(\"頭獎\")").parent();
-                if (firstPrizeContainer.length) {
-                   const firstPrizeText = firstPrizeContainer.find("span.flex-1").text().trim();
-                   if (firstPrizeText && firstPrizeText !== "-") {
-                      const parts = firstPrizeText.split("/");
-                      firstPrize = parseInt(parts[0].replace(/[^0-9]/g, "")) || 0;
-                      if (parts[1]) firstPrizeWinners = parseFloat(parts[1].trim()) || 0;
-                   }
-                }
-                const drawStr = numbers.join(",");
-                if (!seen.has(drawStr)) {
-                  seen.add(drawStr);
+                const formattedDate = normalizeDateToDDMMYYYY(dateText);
+                if (formattedDate && !seenDates.has(formattedDate)) {
+                  seenDates.add(formattedDate);
+                  let firstPrize = 0;
+                  let firstPrizeWinners = 0;
+                  const detailsDiv = numbersDiv.next("div");
+                  const firstPrizeContainer = detailsDiv.find("span:contains(\"頭獎\")").parent();
+                  if (firstPrizeContainer.length) {
+                     const firstPrizeText = firstPrizeContainer.find("span.flex-1").text().trim();
+                     if (firstPrizeText && firstPrizeText !== "-") {
+                        const parts = firstPrizeText.split("/");
+                        firstPrize = parseInt(parts[0].replace(/[^0-9]/g, "")) || 0;
+                        if (parts[1]) firstPrizeWinners = parseFloat(parts[1].trim()) || 0;
+                     }
+                  }
                   draws.push({
                     numbers,
-                    date: dateFormatted,
+                    date: formattedDate,
                     firstPrize,
                     firstPrizeWinners
                   });
@@ -306,13 +345,12 @@ IMPORTANT RULES:
                                 const numbers = [...(p.winningNumbers || []), p.extraNumber].filter(n => typeof n === 'number');
                                 if (numbers.length === 7) {
                                     const date = p.drawDate || '';
-                                    const firstPrize = p.prizeBreakdown?.firstPrize?.totalPayout || p.jackpotAmount || p.prizeBreakdown?.firstPrize?.prizeAmount;
-                                    const firstPrizeWinners = p.prizeBreakdown?.firstPrize?.winnersCount;
-                                    const formattedDate = date.includes('-') ? date.split('-').join('/') : date;
+                                    const formattedDate = normalizeDateToDDMMYYYY(date);
 
-                                    const drawStr = numbers.join(',');
-                                    if (!seen.has(drawStr)) {
-                                        seen.add(drawStr);
+                                    if (formattedDate && !seenDates.has(formattedDate)) {
+                                        seenDates.add(formattedDate);
+                                        const firstPrize = p.prizeBreakdown?.firstPrize?.totalPayout || p.jackpotAmount || p.prizeBreakdown?.firstPrize?.prizeAmount;
+                                        const firstPrizeWinners = p.prizeBreakdown?.firstPrize?.winnersCount;
                                         draws.push({
                                             numbers,
                                             date: formattedDate,
@@ -337,21 +375,21 @@ IMPORTANT RULES:
       // 3. Fallback Dates if scraped results are empty
       const dynamicFallbacks = generateFallbackDrawsUpToToday();
       for (const f of dynamicFallbacks) {
-        const drawStr = f.numbers.join(',');
-        if (!seen.has(drawStr)) {
-          seen.add(drawStr);
-          draws.push({ numbers: f.numbers, date: f.date });
+        const formattedDate = normalizeDateToDDMMYYYY(f.date);
+        if (formattedDate && !seenDates.has(formattedDate)) {
+          seenDates.add(formattedDate);
+          draws.push({ numbers: f.numbers, date: formattedDate });
         }
       }
 
       for (const mockDrawObj of MOCK_PAST_RESULTS) {
         const mockArray = Array.isArray(mockDrawObj) ? mockDrawObj : mockDrawObj.numbers;
         const mockDate = !Array.isArray(mockDrawObj) && mockDrawObj.date ? mockDrawObj.date : `Past Draw`;
+        const formattedDate = normalizeDateToDDMMYYYY(mockDate);
         
-        const drawStr = mockArray.join(',');
-        if (!seen.has(drawStr)) {
-          seen.add(drawStr);
-          draws.push({numbers: mockArray, date: mockDate});
+        if (formattedDate && !seenDates.has(formattedDate)) {
+          seenDates.add(formattedDate);
+          draws.push({numbers: mockArray, date: formattedDate});
         }
       }
       
@@ -377,9 +415,9 @@ IMPORTANT RULES:
                    const yyyy = match[1];
                    const mm = match[2].padStart(2, "0");
                    const dd = match[3].padStart(2, "0");
-                   dateStr = `${yyyy}/${mm}/${dd}`;
+                   dateStr = `${dd}/${mm}/${yyyy}`;
                 } else {
-                   dateStr = pDate.split("（")[0].trim();
+                   dateStr = normalizeDateToDDMMYYYY(pDate.split("（")[0].trim());
                 }
                 let estJackpot = 8000000;
                 if (pJackpot) {
@@ -447,32 +485,32 @@ IMPORTANT RULES:
         
         for (const draw of lotteryDraws) {
           const date = draw.drawDate ? draw.drawDate.split('+')[0].replace(/-/g, '/') : '';
+          const formattedDate = normalizeDateToDDMMYYYY(date);
           if (draw.status === "Defined" || (draw.status !== "Result" && !draw.drawResult?.drawnNo?.length)) {
              // This is the next draw
              if (!nextDrawFound) {
                  nextDrawFound = {
-                     date,
+                     date: formattedDate,
                      estimatedJackpot: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 8000000
                  };
              }
           } else if (draw.status === "Result" && draw.drawResult?.drawnNo?.length === 6) {
-              // This is a past draw, make sure it's in our draws array
-              const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
-              const drawStr = numbers.join(',');
-              if (!seen.has(drawStr)) {
-                  seen.add(drawStr);
-                  let firstPrizeWinners = 0;
-                  if (draw.lotteryPool?.lotteryPrizes) {
-                      const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
-                      if (fPrize) firstPrizeWinners = fPrize.winningUnit;
-                  }
-                  draws.push({
-                      numbers,
-                      date,
-                      firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
-                      firstPrizeWinners
-                  });
-              }
+               // This is a past draw, make sure it's in our draws array
+               const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
+               if (formattedDate && !seenDates.has(formattedDate)) {
+                   seenDates.add(formattedDate);
+                   let firstPrizeWinners = 0;
+                   if (draw.lotteryPool?.lotteryPrizes) {
+                       const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
+                       if (fPrize) firstPrizeWinners = fPrize.winningUnit;
+                   }
+                   draws.push({
+                       numbers,
+                       date: formattedDate,
+                       firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
+                       firstPrizeWinners
+                   });
+               }
           }
         }
       } catch (e) {
@@ -493,7 +531,7 @@ IMPORTANT RULES:
            return new Date(d).getTime() || 0;
          };
          return parseDate(b.date) - parseDate(a.date);
-      });
+       });
 
       let nextDraw = nextDrawFound;
       if (!nextDraw && draws.length > 0) {
@@ -520,10 +558,14 @@ IMPORTANT RULES:
               const dd = String(lastDateObj.getDate()).padStart(2, '0');
               
               nextDraw = {
-                  date: `${yyyy}/${mm}/${dd}`,
+                  date: `${dd}/${mm}/${yyyy}`,
                   estimatedJackpot: 8000000 // default minimum jackpot
               };
           }
+      }
+
+      if (nextDraw) {
+        nextDraw.date = normalizeDateToDDMMYYYY(nextDraw.date);
       }
 
       const responsePayload = { success: true, draws, nextDraw };

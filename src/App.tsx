@@ -4092,6 +4092,24 @@ export default function App() {
 
           {/* Right Column: Results */}
           <div id="results" className={generatedBets.length === 0 ? "lg:col-span-7 space-y-4" : generatedBets.length > 5 ? "max-w-6xl mx-auto w-full space-y-2 sm:space-y-4" : "max-w-2xl mx-auto w-full space-y-1 sm:space-y-2"}>
+            {generatedBets.length === 0 && nextDrawInfo && (
+              <div className="flex justify-center w-full pt-1 pb-1 px-2 sm:px-0">
+                <div className="bg-[#FFD700] border-4 border-black px-6 py-2 w-full max-w-xl rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove', paddingBottom: '7px' }}>
+                  <span className="text-[11px] sm:text-xs font-black px-3 py-0.5 rounded-full border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest bg-[#f060ff] text-black">
+                    下一期預計頭獎
+                  </span>
+                  <div className="flex items-center gap-2 sm:gap-3 mt-1.5 font-black">
+                    <span className="text-[20px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#000000', fontWeight: 'bold', fontFamily: 'Verdana', borderStyle: 'outset', borderColor: '#fe0101' }}>
+                      ${nextDrawInfo.estimatedJackpot.toLocaleString()}
+                    </span>
+                    <span className="text-black/30 font-black text-lg">|</span>
+                    <span className="text-lg sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontFamily: 'Verdana', paddingLeft: '8px', paddingTop: '4px', borderStyle: 'outset', borderWidth: '-5px' }}>
+                      {nextDrawInfo.date}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
             {generatedBets.length > 0 ? (
               <div className="space-y-1 sm:space-y-2">
                 <div className="flex flex-col gap-1 items-center justify-center w-full">
@@ -5113,25 +5131,8 @@ export default function App() {
               </div>
             ) : (
               <div className="w-full h-auto flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '3px' }}>
-                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '-13px', paddingBottom: '-15px', marginBottom: '11px', marginRight: '0px' }}>
-                  {nextDrawInfo && (
-                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove', paddingBottom: '7px' }}>
-                      <span className="text-xs sm:text-sm font-black px-3 py-0.5 rounded-full border-[2px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3.5 sm:-top-4 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest" style={{ backgroundColor: '#f060ff', fontSize: '19px' }}>
-                         下一期預計頭獎
-                      </span>
-                      <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-1 font-black">
-                        <span className="text-[22px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#000000', fontWeight: 'bold', fontFamily: 'Verdana', borderStyle: 'outset', borderColor: '#fe0101' }}>
-                          ${nextDrawInfo.estimatedJackpot.toLocaleString()}
-                        </span>
-                        <span className="text-black/30 font-black text-lg">|</span>
-                        <span className="text-xl sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontFamily: 'Verdana', paddingLeft: '8px', paddingTop: '4px', borderStyle: 'outset', borderWidth: '-5px' }}>
-                          {nextDrawInfo.date}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
+                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '10px', paddingBottom: '10px', marginBottom: '11px', marginRight: '0px' }}>
+                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
                     最近十期開獎結果
                   </span>
                 </div>
