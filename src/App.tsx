@@ -237,8 +237,6 @@ export default function App() {
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
   const [noConsecutivePairs, setNoConsecutivePairs] = useState(false);
   const [noConsecutiveTriplets, setNoConsecutiveTriplets] = useState(false);
-  const [require2Tails, setRequire2Tails] = useState(false);
-  const [require3Tails, setRequire3Tails] = useState(false);
   const [use2Combos, setUse2Combos] = useState(false);
   const [combo2Count, setCombo2Count] = useState<number>(1);
   const [use3Combos, setUse3Combos] = useState(false);
@@ -1076,8 +1074,6 @@ export default function App() {
         comboAnalysisDrawCount: 100,
         noConsecutivePairs: noConsecutivePairs,
         noConsecutiveTriplets: noConsecutiveTriplets,
-        require2Tails: require2Tails,
-        require3Tails: require3Tails,
         sumDistributionRange: sumRange
       });
 
@@ -1174,8 +1170,6 @@ export default function App() {
         excludeUnseenIncludeSpecial: false,
         noConsecutivePairs: false,
         noConsecutiveTriplets: false,
-        require2Tails: require2Tails,
-        require3Tails: require3Tails,
         comboAnalysisDrawCount: aiAnalysisDraws,
         enforceNormalSumDistribution: true,
         sumDistributionRange: sumRange
@@ -3323,7 +3317,7 @@ export default function App() {
                           step={1}
                           className="w-full flex-1 cursor-pointer"
                         />
-                        <span className={`flex-none flex-center items-center justify-center font-black aspect-square w-8 h-8 text-sm sm:text-base rounded-full border-[2.5px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] ${colors[1] === "red" ? "bg-[#FF9999] text-black" : colors[1] === "blue" ? "bg-[#99CCFF] text-black" : "bg-[#99FF99] text-black"}`}>
+                        <span className={`flex-none flex items-center justify-center font-black aspect-square w-8 h-8 text-sm sm:text-base rounded-full border-[2.5px] border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] ${colors[1] === "red" ? "bg-[#FF9999] text-black" : colors[1] === "blue" ? "bg-[#99CCFF] text-black" : "bg-[#99FF99] text-black"}`}>
                           {colors[1] === "red" ? "紅" : colors[1] === "blue" ? "藍" : "綠"}
                         </span>
                       </div>
@@ -3346,35 +3340,6 @@ export default function App() {
                       className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${noConsecutiveTriplets ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
                     >
                       不要連3號
-                    </button>
-                  </div>
-                </div>
-
-                {/* Tail Digit Constraints */}
-                <div className="space-y-0.5">
-                  <Label className="text-base font-bold">尾數限制</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setRequire2Tails(!require2Tails);
-                        if (!require2Tails) {
-                          setRequire3Tails(false);
-                        }
-                      }}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${require2Tails ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
-                    >
-                      要2尾（一組）
-                    </button>
-                    <button
-                      onClick={() => {
-                        setRequire3Tails(!require3Tails);
-                        if (!require3Tails) {
-                          setRequire2Tails(false);
-                        }
-                      }}
-                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${require3Tails ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
-                    >
-                      要3尾（一組）
                     </button>
                   </div>
                 </div>
@@ -4092,24 +4057,6 @@ export default function App() {
 
           {/* Right Column: Results */}
           <div id="results" className={generatedBets.length === 0 ? "lg:col-span-7 space-y-4" : generatedBets.length > 5 ? "max-w-6xl mx-auto w-full space-y-2 sm:space-y-4" : "max-w-2xl mx-auto w-full space-y-1 sm:space-y-2"}>
-            {generatedBets.length === 0 && nextDrawInfo && (
-              <div className="flex justify-center w-full pt-1 pb-1 px-2 sm:px-0">
-                <div className="bg-[#FFD700] border-4 border-black px-6 py-2 w-full max-w-xl rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove', paddingBottom: '7px' }}>
-                  <span className="text-[11px] sm:text-xs font-black px-3 py-0.5 rounded-full border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest bg-[#f060ff] text-black">
-                    下一期預計頭獎
-                  </span>
-                  <div className="flex items-center gap-2 sm:gap-3 mt-1.5 font-black">
-                    <span className="text-[20px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#000000', fontWeight: 'bold', fontFamily: 'Verdana', borderStyle: 'outset', borderColor: '#fe0101' }}>
-                      ${nextDrawInfo.estimatedJackpot.toLocaleString()}
-                    </span>
-                    <span className="text-black/30 font-black text-lg">|</span>
-                    <span className="text-lg sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontFamily: 'Verdana', paddingLeft: '8px', paddingTop: '4px', borderStyle: 'outset', borderWidth: '-5px' }}>
-                      {nextDrawInfo.date}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
             {generatedBets.length > 0 ? (
               <div className="space-y-1 sm:space-y-2">
                 <div className="flex flex-col gap-1 items-center justify-center w-full">
@@ -5089,7 +5036,6 @@ export default function App() {
                           {(noConsecutivePairs || noConsecutiveTriplets) && (
                             <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                           )}
-                          <li>尾數限制: {require2Tails ? "要2尾（一組）" : require3Tails ? "要3尾（一組）" : "不要2尾或3尾"}</li>
                           {(preferredOddCount !== null || oddEven !== 'all') && (
                             <li>
                               單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}
@@ -5131,8 +5077,25 @@ export default function App() {
               </div>
             ) : (
               <div className="w-full h-auto flex flex-col items-center bg-orange-400 border-[3px] sm:border-4 border-black rounded-2xl sm:rounded-3xl p-2 sm:p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] sm:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '3px' }}>
-                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '10px', paddingBottom: '10px', marginBottom: '11px', marginRight: '0px' }}>
-                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
+                <div className="flex flex-col items-center mb-3 sm:mb-4 pt-1 sm:pt-2 text-center gap-3 w-full" style={{ paddingTop: '-13px', paddingBottom: '-15px', marginBottom: '11px', marginRight: '0px' }}>
+                  {nextDrawInfo && (
+                    <div className="bg-[#FFD700] border-[3px] border-black px-6 py-2.5 w-max max-w-full rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center relative mt-3 mb-1" style={{ borderStyle: 'groove', paddingBottom: '7px' }}>
+                      <span className="text-xs sm:text-sm font-black px-3 py-0.5 rounded-full border-[2px] border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] absolute -top-3.5 sm:-top-4 left-1/2 -translate-x-1/2 whitespace-nowrap tracking-widest" style={{ backgroundColor: '#f060ff', fontSize: '19px' }}>
+                         下一期預計頭獎
+                      </span>
+                      <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-1 font-black">
+                        <span className="text-[22px] sm:text-2xl drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] px-1" style={{ color: '#000000', fontWeight: 'bold', fontFamily: 'Verdana', borderStyle: 'outset', borderColor: '#fe0101' }}>
+                          ${nextDrawInfo.estimatedJackpot.toLocaleString()}
+                        </span>
+                        <span className="text-black/30 font-black text-lg">|</span>
+                        <span className="text-xl sm:text-2xl drop-shadow-[1px_1px_0px_rgba(255,255,255,0.8)] px-1" style={{ fontFamily: 'Verdana', paddingLeft: '8px', paddingTop: '4px', borderStyle: 'outset', borderWidth: '-5px' }}>
+                          {nextDrawInfo.date}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
                     最近十期開獎結果
                   </span>
                 </div>
@@ -6021,7 +5984,6 @@ export default function App() {
                   {(noConsecutivePairs || noConsecutiveTriplets) && (
                     <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                   )}
-                  <li>尾數限制: {require2Tails ? "要2尾（一組）" : require3Tails ? "要3尾（一組）" : "不要2尾或3尾"}</li>
                   {(preferredOddCount !== null || oddEven !== 'all') && (
                     <li>
                       單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}

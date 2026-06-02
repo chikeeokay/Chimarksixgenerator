@@ -310,22 +310,6 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       if (hasTriplet) validCounts = false;
     }
 
-    if (validCounts) {
-      const tailCounts = Array(10).fill(0);
-      for (const num of betResult.numbers) {
-        tailCounts[num % 10]++;
-      }
-      const has2Tail = tailCounts.includes(2);
-      const has3Tail = tailCounts.includes(3);
-
-      if (options.require2Tails && !has2Tail) {
-        validCounts = false;
-      }
-      if (options.require3Tails && !has3Tail) {
-        validCounts = false;
-      }
-    }
-
     if (options.sumDistributionRange) {
       const sum = betResult.numbers.reduce((a, b) => a + b, 0);
       if (sum < options.sumDistributionRange[0] || sum > options.sumDistributionRange[1]) {
@@ -407,22 +391,6 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
         } else if (valid && options.noConsecutiveTriplets) {
           const sorted = [...currentCombo].sort((a, b) => a - b);
           for (let i = 0; i < 4; i++) if (sorted[i] + 1 === sorted[i + 1] && sorted[i + 1] + 1 === sorted[i + 2]) valid = false;
-        }
-
-        if (valid) {
-          const tailCounts = Array(10).fill(0);
-          for (const num of currentCombo) {
-            tailCounts[num % 10]++;
-          }
-          const has2Tail = tailCounts.includes(2);
-          const has3Tail = tailCounts.includes(3);
-
-          if (options.require2Tails && !has2Tail) {
-            valid = false;
-          }
-          if (options.require3Tails && !has3Tail) {
-            valid = false;
-          }
         }
 
         if (valid) {

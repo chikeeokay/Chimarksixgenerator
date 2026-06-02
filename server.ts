@@ -129,93 +129,6 @@ IMPORTANT RULES:
     }
   });
 
-  function normalizeDateToDDMMYYYY(dateStr: string): string {
-    if (!dateStr) return "";
-    const parts = dateStr.split(/[-/]/);
-    if (parts.length === 3) {
-      if (parts[0].length === 4) {
-        // YYYY, MM, DD -> DD/MM/YYYY
-        return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
-      } else {
-        // DD, MM, YYYY -> DD/MM/YYYY
-        return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
-      }
-    }
-    return dateStr;
-  }
-
-  function getDeterministicMockDraw(dateStr: string): number[] {
-    let hash = 0;
-    for (let i = 0; i < dateStr.length; i++) {
-      hash = dateStr.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const numbers: number[] = [];
-    let seed = Math.abs(hash);
-    while (numbers.length < 7) {
-      seed = (seed * 9301 + 49297) % 233280;
-      const num = 1 + (seed % 49);
-      if (!numbers.includes(num)) {
-        numbers.push(num);
-      }
-    }
-    const main = numbers.slice(0, 6).sort((a, b) => a - b);
-    const extra = numbers[6];
-    return [...main, extra];
-  }
-
-  function generateFallbackDrawsUpToToday(): { numbers: number[], date: string }[] {
-    const result: { numbers: number[], date: string }[] = [];
-    
-    // Convert current UTC time to HKT (UTC+8) accurately
-    const hkMilliseconds = Date.now() + 8 * 60 * 60 * 1000;
-    const hkTime = new Date(hkMilliseconds);
-    
-    const hkYear = hkTime.getUTCFullYear();
-    const hkMonth = hkTime.getUTCMonth(); // 0-indexed
-    const hkDate = hkTime.getUTCDate();
-    const hkHours = hkTime.getUTCHours();
-    const hkMinutes = hkTime.getUTCMinutes();
-
-    // Start date in UTC: 2026-04-18
-    let current = new Date(Date.UTC(2026, 3, 18)); // 3 = April in JS Date
-    current.setUTCDate(current.getUTCDate() + 1);
-    
-    // Today in HK as a UTC timestamp representing midnight
-    const hkTodayMidnight = Date.UTC(hkYear, hkMonth, hkDate);
-    
-    while (current.getTime() <= hkTodayMidnight) {
-      const curYear = current.getUTCFullYear();
-      const curMonth = current.getUTCMonth();
-      const curDate = current.getUTCDate();
-      
-      const day = current.getUTCDay();
-      if (day === 2 || day === 4 || day === 6) {
-        // If it is HKT today, only include if past 21:35 (9:35 PM HKT)
-        if (curYear === hkYear && curMonth === hkMonth && curDate === hkDate) {
-          const minutesSinceMidnight = hkHours * 60 + hkMinutes;
-          const drawMinutes = 21 * 60 + 35; // 21:35
-          if (minutesSinceMidnight < drawMinutes) {
-            // Has not drawn yet today
-            current.setUTCDate(current.getUTCDate() + 1);
-            continue;
-          }
-        }
-        
-        const yyyy = curYear;
-        const mm = String(curMonth + 1).padStart(2, '0');
-        const dd = String(curDate).padStart(2, '0');
-        const dateStr = `${dd}/${mm}/${yyyy}`;
-        
-        result.push({
-          numbers: getDeterministicMockDraw(dateStr),
-          date: dateStr
-        });
-      }
-      current.setUTCDate(current.getUTCDate() + 1);
-    }
-    return result.reverse();
-  }
-
   app.get("/api/marksix", async (req, res) => {
     const now = Date.now();
     if (cachedMarkSixData && (now - lastCacheTime < CACHE_TTL)) {
@@ -225,64 +138,11 @@ IMPORTANT RULES:
 
     try {
       const draws: {numbers: number[], date: string, firstPrize?: number, firstPrizeWinners?: number}[] = [];
-      const seenDates = new Set<string>();
+      const seen = new Set<string>();
 
-      // 1. Scrape marksixinfo.com/latest20draws (supremely accurate and format-stable in 2026)
-      try {
-        const response = await fetchWithTimeout("https://marksixinfo.com/latest20draws", {
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" }
-        }, 4000);
-        if (response.ok) {
-          const html = await response.text();
-          const $ = cheerio.load(html);
-          $("p").each((i, el) => {
-            const text = $(el).text().trim();
-            if (/^\d+\/\d+$/.test(text)) {
-              const drawId = text;
-              const parentHeader = $(el).closest("div.flex.justify-between.items-center");
-              if (parentHeader.length === 0) return;
-              const dateText = $(el).next("p").text().trim();
-              const numbersDiv = parentHeader.next("div");
-              const numbers: number[] = [];
-              numbersDiv.find("div.rounded-full").each((j, ballEl) => {
-                const val = parseInt($(ballEl).text().trim());
-                if (!isNaN(val) && val >= 1 && val <= 49) {
-                  numbers.push(val);
-                }
-              });
-              if (numbers.length === 7) {
-                const formattedDate = normalizeDateToDDMMYYYY(dateText);
-                if (formattedDate && !seenDates.has(formattedDate)) {
-                  seenDates.add(formattedDate);
-                  let firstPrize = 0;
-                  let firstPrizeWinners = 0;
-                  const detailsDiv = numbersDiv.next("div");
-                  const firstPrizeContainer = detailsDiv.find("span:contains(\"頭獎\")").parent();
-                  if (firstPrizeContainer.length) {
-                     const firstPrizeText = firstPrizeContainer.find("span.flex-1").text().trim();
-                     if (firstPrizeText && firstPrizeText !== "-") {
-                        const parts = firstPrizeText.split("/");
-                        firstPrize = parseInt(parts[0].replace(/[^0-9]/g, "")) || 0;
-                        if (parts[1]) firstPrizeWinners = parseFloat(parts[1].trim()) || 0;
-                     }
-                  }
-                  draws.push({
-                    numbers,
-                    date: formattedDate,
-                    firstPrize,
-                    firstPrizeWinners
-                  });
-                }
-              }
-            }
-          });
-        }
-      } catch (err) {
-        console.error("Failed to scrape marksixinfo.com/latest20draws:", err);
-      }
-
-      // 2. Scrape on99.life concurrently for years (2026, 2025, 2024 history)
       const years = [2026, 2025, 2024];
+      
+      // Scrape historical years concurrently
       await Promise.all(years.map(async (year) => {
         try {
           // Use fetchWithTimeout to prevent slow network from blocking user
@@ -305,6 +165,7 @@ IMPORTANT RULES:
             const resultsIdx = allScriptSources.indexOf('\\"results\\":[');
             if (resultsIdx !== -1) {
                 const startStr = allScriptSources.slice(resultsIdx + '\\"results\\":'.length);
+                
                 const match = startStr.match(/^(\[.*?\]\]\}),\\"cacheStrategy\\"/);
                 let resultsStr = '[]';
                 if (match) {
@@ -347,12 +208,13 @@ IMPORTANT RULES:
                                 const numbers = [...(p.winningNumbers || []), p.extraNumber].filter(n => typeof n === 'number');
                                 if (numbers.length === 7) {
                                     const date = p.drawDate || '';
-                                    const formattedDate = normalizeDateToDDMMYYYY(date);
+                                    const firstPrize = p.prizeBreakdown?.firstPrize?.totalPayout || p.jackpotAmount || p.prizeBreakdown?.firstPrize?.prizeAmount;
+                                    const firstPrizeWinners = p.prizeBreakdown?.firstPrize?.winnersCount;
+                                    const formattedDate = date.includes('-') ? date.split('-').join('/') : date;
 
-                                    if (formattedDate && !seenDates.has(formattedDate)) {
-                                        seenDates.add(formattedDate);
-                                        const firstPrize = p.prizeBreakdown?.firstPrize?.totalPayout || p.jackpotAmount || p.prizeBreakdown?.firstPrize?.prizeAmount;
-                                        const firstPrizeWinners = p.prizeBreakdown?.firstPrize?.winnersCount;
+                                    const drawStr = numbers.join(',');
+                                    if (!seen.has(drawStr)) {
+                                        seen.add(drawStr);
                                         draws.push({
                                             numbers,
                                             date: formattedDate,
@@ -374,99 +236,20 @@ IMPORTANT RULES:
         }
       }));
 
-      // 3. Fallback Dates if scraped results are empty
-      const dynamicFallbacks = generateFallbackDrawsUpToToday();
-      for (const f of dynamicFallbacks) {
-        const formattedDate = normalizeDateToDDMMYYYY(f.date);
-        if (formattedDate && !seenDates.has(formattedDate)) {
-          seenDates.add(formattedDate);
-          draws.push({ numbers: f.numbers, date: formattedDate });
-        }
-      }
-
+      // Fallback Dates if scraped results are empty
       for (const mockDrawObj of MOCK_PAST_RESULTS) {
         const mockArray = Array.isArray(mockDrawObj) ? mockDrawObj : mockDrawObj.numbers;
         const mockDate = !Array.isArray(mockDrawObj) && mockDrawObj.date ? mockDrawObj.date : `Past Draw`;
-        const formattedDate = normalizeDateToDDMMYYYY(mockDate);
         
-        if (formattedDate && !seenDates.has(formattedDate)) {
-          seenDates.add(formattedDate);
-          draws.push({numbers: mockArray, date: formattedDate});
+        const drawStr = mockArray.join(',');
+        if (!seen.has(drawStr)) {
+          seen.add(drawStr);
+          draws.push({numbers: mockArray, date: mockDate});
         }
       }
       
       let nextDrawFound: any = null;
-
-      // 4. Scrape marksixinfo.com/ homepage directly for the exact next draw info
-      try {
-        const response = await fetchWithTimeout("https://marksixinfo.com/", {
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)" }
-        }, 4000);
-        if (response.ok) {
-          const html = await response.text();
-          const $ = cheerio.load(html);
-          
-          const bodyText = $("body").text();
-          const dateMatch = bodyText.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-          const jackpotMatch = bodyText.match(/頭獎估計[：:]?\s*\$([\d,]+)/) || bodyText.match(/頭獎估計[^\d]*?([\d,]{6,12})/);
-          
-          let scrapedDateStr = "";
-          let scrapedJackpot = 8000000;
-          
-          if (dateMatch) {
-             const yyyy = dateMatch[1];
-             const mm = dateMatch[2].padStart(2, "0");
-             const dd = dateMatch[3].padStart(2, "0");
-             scrapedDateStr = `${dd}/${mm}/${yyyy}`;
-          }
-          
-          if (jackpotMatch) {
-             const num = parseInt(jackpotMatch[1].replace(/[^0-9]/g, ""));
-             if (!isNaN(num) && num > 0) scrapedJackpot = num;
-          }
-          
-          if (scrapedDateStr) {
-             nextDrawFound = {
-                date: scrapedDateStr,
-                estimatedJackpot: scrapedJackpot
-             };
-             console.log("Successfully scraped nextDraw from body text regex:", nextDrawFound);
-          } else {
-             // Fallback to structural cheerio parser just in case
-             const h = $("h2:contains(\"下期六合彩攪珠時間\")");
-             if (h.length) {
-                const parent = h.parent().parent();
-                const pDate = parent.find("p").first().text().trim();
-                const pJackpot = parent.find("p:contains(\"頭獎估計\")").text().trim();
-                if (pDate) {
-                   const match = pDate.match(/(\d+)年(\d+)月(\d+)日/);
-                   let dateStr = "";
-                   if (match) {
-                      const yyyy = match[1];
-                      const mm = match[2].padStart(2, "0");
-                      const dd = match[3].padStart(2, "0");
-                      dateStr = `${dd}/${mm}/${yyyy}`;
-                   } else {
-                      dateStr = normalizeDateToDDMMYYYY(pDate.split("（")[0].trim());
-                   }
-                   let estJackpot = 8000000;
-                   if (pJackpot) {
-                      const num = parseInt(pJackpot.replace(/[^0-9]/g, ""));
-                      if (!isNaN(num)) estJackpot = num;
-                   }
-                   nextDrawFound = {
-                      date: dateStr,
-                      estimatedJackpot: estJackpot
-                   };
-                }
-             }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to scrape marksixinfo nextDraw:", err);
-      }
-      
-      // Fetch 最新和下一期 from HKJC GraphQL as a fallback
+      // Fetch 最新和下一期 from HKJC GraphQL
       try {
         const query = `query marksixDraw {
           timeOffset {
@@ -516,32 +299,32 @@ IMPORTANT RULES:
         
         for (const draw of lotteryDraws) {
           const date = draw.drawDate ? draw.drawDate.split('+')[0].replace(/-/g, '/') : '';
-          const formattedDate = normalizeDateToDDMMYYYY(date);
           if (draw.status === "Defined" || (draw.status !== "Result" && !draw.drawResult?.drawnNo?.length)) {
              // This is the next draw
              if (!nextDrawFound) {
                  nextDrawFound = {
-                     date: formattedDate,
+                     date,
                      estimatedJackpot: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 8000000
                  };
              }
           } else if (draw.status === "Result" && draw.drawResult?.drawnNo?.length === 6) {
-               // This is a past draw, make sure it's in our draws array
-               const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
-               if (formattedDate && !seenDates.has(formattedDate)) {
-                   seenDates.add(formattedDate);
-                   let firstPrizeWinners = 0;
-                   if (draw.lotteryPool?.lotteryPrizes) {
-                       const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
-                       if (fPrize) firstPrizeWinners = fPrize.winningUnit;
-                   }
-                   draws.push({
-                       numbers,
-                       date: formattedDate,
-                       firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
-                       firstPrizeWinners
-                   });
-               }
+              // This is a past draw, make sure it's in our draws array
+              const numbers = [...draw.drawResult.drawnNo, draw.drawResult.xDrawnNo];
+              const drawStr = numbers.join(',');
+              if (!seen.has(drawStr)) {
+                  seen.add(drawStr);
+                  let firstPrizeWinners = 0;
+                  if (draw.lotteryPool?.lotteryPrizes) {
+                      const fPrize = draw.lotteryPool.lotteryPrizes.find((p:any) => p.type === 1);
+                      if (fPrize) firstPrizeWinners = fPrize.winningUnit;
+                  }
+                  draws.push({
+                      numbers,
+                      date,
+                      firstPrize: parseInt(draw.lotteryPool?.derivedFirstPrizeDiv) || parseInt(draw.lotteryPool?.jackpot) || 0,
+                      firstPrizeWinners
+                  });
+              }
           }
         }
       } catch (e) {
@@ -562,7 +345,7 @@ IMPORTANT RULES:
            return new Date(d).getTime() || 0;
          };
          return parseDate(b.date) - parseDate(a.date);
-       });
+      });
 
       let nextDraw = nextDrawFound;
       if (!nextDraw && draws.length > 0) {
@@ -589,14 +372,10 @@ IMPORTANT RULES:
               const dd = String(lastDateObj.getDate()).padStart(2, '0');
               
               nextDraw = {
-                  date: `${dd}/${mm}/${yyyy}`,
+                  date: `${yyyy}/${mm}/${dd}`,
                   estimatedJackpot: 8000000 // default minimum jackpot
               };
           }
-      }
-
-      if (nextDraw) {
-        nextDraw.date = normalizeDateToDDMMYYYY(nextDraw.date);
       }
 
       const responsePayload = { success: true, draws, nextDraw };
