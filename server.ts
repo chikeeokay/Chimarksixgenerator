@@ -165,36 +165,38 @@ IMPORTANT RULES:
 
   function generateFallbackDrawsUpToToday(): { numbers: number[], date: string }[] {
     const result: { numbers: number[], date: string }[] = [];
-    const start = new Date("2026-04-18");
     
     // Convert current UTC time to HKT (UTC+8) accurately
-    const hkTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const hkMilliseconds = Date.now() + 8 * 60 * 60 * 1000;
+    const hkTime = new Date(hkMilliseconds);
+    
     const hkYear = hkTime.getUTCFullYear();
     const hkMonth = hkTime.getUTCMonth(); // 0-indexed
     const hkDate = hkTime.getUTCDate();
     const hkHours = hkTime.getUTCHours();
     const hkMinutes = hkTime.getUTCMinutes();
 
-    let current = new Date(start);
-    current.setDate(current.getDate() + 1);
+    // Start date in UTC: 2026-04-18
+    let current = new Date(Date.UTC(2026, 3, 18)); // 3 = April in JS Date
+    current.setUTCDate(current.getUTCDate() + 1);
     
-    // We iterate up to today's date in HK
-    const hkTodayDateOnly = new Date(hkYear, hkMonth, hkDate);
+    // Today in HK as a UTC timestamp representing midnight
+    const hkTodayMidnight = Date.UTC(hkYear, hkMonth, hkDate);
     
-    while (current <= hkTodayDateOnly) {
-      const curYear = current.getFullYear();
-      const curMonth = current.getMonth();
-      const curDate = current.getDate();
+    while (current.getTime() <= hkTodayMidnight) {
+      const curYear = current.getUTCFullYear();
+      const curMonth = current.getUTCMonth();
+      const curDate = current.getUTCDate();
       
-      const day = current.getDay();
+      const day = current.getUTCDay();
       if (day === 2 || day === 4 || day === 6) {
-        // Double check: if it is HKT today, only include if past 21:35 (9:35 PM HKT)
+        // If it is HKT today, only include if past 21:35 (9:35 PM HKT)
         if (curYear === hkYear && curMonth === hkMonth && curDate === hkDate) {
           const minutesSinceMidnight = hkHours * 60 + hkMinutes;
           const drawMinutes = 21 * 60 + 35; // 21:35
           if (minutesSinceMidnight < drawMinutes) {
             // Has not drawn yet today
-            current.setDate(current.getDate() + 1);
+            current.setUTCDate(current.getUTCDate() + 1);
             continue;
           }
         }
@@ -209,7 +211,7 @@ IMPORTANT RULES:
           date: dateStr
         });
       }
-      current.setDate(current.getDate() + 1);
+      current.setUTCDate(current.getUTCDate() + 1);
     }
     return result.reverse();
   }
@@ -403,31 +405,60 @@ IMPORTANT RULES:
         if (response.ok) {
           const html = await response.text();
           const $ = cheerio.load(html);
-          const h = $("h2:contains(\"下期六合彩攪珠時間\")");
-          if (h.length) {
-             const parent = h.parent().parent();
-             const pDate = parent.find("p.text-gray-800").first().text().trim();
-             const pJackpot = parent.find("p:contains(\"頭獎估計\")").text().trim();
-             if (pDate) {
-                const match = pDate.match(/(\d+)年(\d+)月(\d+)日/);
-                let dateStr = "";
-                if (match) {
-                   const yyyy = match[1];
-                   const mm = match[2].padStart(2, "0");
-                   const dd = match[3].padStart(2, "0");
-                   dateStr = `${dd}/${mm}/${yyyy}`;
-                } else {
-                   dateStr = normalizeDateToDDMMYYYY(pDate.split("（")[0].trim());
+          
+          const bodyText = $("body").text();
+          const dateMatch = bodyText.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+          const jackpotMatch = bodyText.match(/頭獎估計[：:]?\s*\$([\d,]+)/) || bodyText.match(/頭獎估計[^\d]*?([\d,]{6,12})/);
+          
+          let scrapedDateStr = "";
+          let scrapedJackpot = 8000000;
+          
+          if (dateMatch) {
+             const yyyy = dateMatch[1];
+             const mm = dateMatch[2].padStart(2, "0");
+             const dd = dateMatch[3].padStart(2, "0");
+             scrapedDateStr = `${dd}/${mm}/${yyyy}`;
+          }
+          
+          if (jackpotMatch) {
+             const num = parseInt(jackpotMatch[1].replace(/[^0-9]/g, ""));
+             if (!isNaN(num) && num > 0) scrapedJackpot = num;
+          }
+          
+          if (scrapedDateStr) {
+             nextDrawFound = {
+                date: scrapedDateStr,
+                estimatedJackpot: scrapedJackpot
+             };
+             console.log("Successfully scraped nextDraw from body text regex:", nextDrawFound);
+          } else {
+             // Fallback to structural cheerio parser just in case
+             const h = $("h2:contains(\"下期六合彩攪珠時間\")");
+             if (h.length) {
+                const parent = h.parent().parent();
+                const pDate = parent.find("p").first().text().trim();
+                const pJackpot = parent.find("p:contains(\"頭獎估計\")").text().trim();
+                if (pDate) {
+                   const match = pDate.match(/(\d+)年(\d+)月(\d+)日/);
+                   let dateStr = "";
+                   if (match) {
+                      const yyyy = match[1];
+                      const mm = match[2].padStart(2, "0");
+                      const dd = match[3].padStart(2, "0");
+                      dateStr = `${dd}/${mm}/${yyyy}`;
+                   } else {
+                      dateStr = normalizeDateToDDMMYYYY(pDate.split("（")[0].trim());
+                   }
+                   let estJackpot = 8000000;
+                   if (pJackpot) {
+                      const num = parseInt(pJackpot.replace(/[^0-9]/g, ""));
+                      if (!isNaN(num)) estJackpot = num;
+                   }
+                   nextDrawFound = {
+                      date: dateStr,
+                      estimatedJackpot: estJackpot
+                   };
                 }
-                let estJackpot = 8000000;
-                if (pJackpot) {
-                   const num = parseInt(pJackpot.replace(/[^0-9]/g, ""));
-                   if (!isNaN(num)) estJackpot = num;
-                }
-                nextDrawFound = {
-                   date: dateStr,
-                   estimatedJackpot: estJackpot
-                };
              }
           }
         }
