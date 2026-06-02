@@ -1223,12 +1223,14 @@ export default function App() {
             aiStrategy: i % 2 === 0 ? "balanced" : "cold", // Mix strategies
           });
           
-          const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort((a,b)=>a-b);
+          const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers)));
+          const shuffledMerged = [...merged].sort(() => Math.random() - 0.5);
           const targetTotal = bestConfig.bCount + bestConfig.legsLength;
-          const selectedNums = merged.slice(0, targetTotal);
+          const selectedNums = shuffledMerged.slice(0, targetTotal);
           while (selectedNums.length < targetTotal) {
              const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
-             for (const n of nextRanked) {
+             const shuffledNextRanked = [...nextRanked].sort(() => Math.random() - 0.5);
+             for (const n of shuffledNextRanked) {
                 if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
                   selectedNums.push(n);
                 }
@@ -5506,10 +5508,28 @@ export default function App() {
                     const colorStr = dominantColors.map(c => `${c.color} ${c.count} 個`).join('，');
                     
                     const sortedNums = [...winningNums].sort((a,b)=>a-b);
-                    let consecutives = 0;
-                    for (let i = 0; i < sortedNums.length - 1; i++) {
-                      if (sortedNums[i] + 1 === sortedNums[i+1]) consecutives++;
+                    const consecutiveGroups: number[][] = [];
+                    if (sortedNums.length > 0) {
+                      let currentGroup: number[] = [sortedNums[0]];
+                      for (let i = 1; i < sortedNums.length; i++) {
+                        if (sortedNums[i] === sortedNums[i-1] + 1) {
+                          currentGroup.push(sortedNums[i]);
+                        } else {
+                          if (currentGroup.length >= 2) {
+                            consecutiveGroups.push(currentGroup);
+                          }
+                          currentGroup = [sortedNums[i]];
+                        }
+                      }
+                      if (currentGroup.length >= 2) {
+                        consecutiveGroups.push(currentGroup);
+                      }
                     }
+                    const consecutives = consecutiveGroups.length;
+                    const getConsecutiveDesc = (groups: number[][]) => {
+                      if (groups.length === 0) return "無連號";
+                      return groups.map(g => `${g.join('-')} (連${g.length}號)`).join('、');
+                    };
 
                     const tails = sortedNums.map(n => n % 10);
                     const tailCounts = tails.reduce((acc, t) => {
@@ -5563,7 +5583,7 @@ export default function App() {
                                     <div className="bg-orange-100 border-2 border-black rounded-full px-3 py-1 font-normal text-xs shrink-0 text-orange-800">特殊形態</div>
                                     <div className="flex-1 flex flex-wrap gap-2">
                                       {consecutives > 0 ? (
-                                        <span className="bg-red-100 border border-red-300 text-red-800 px-2 py-0.5 rounded text-xs">出現 {consecutives} 組連號</span>
+                                        <span className="bg-red-100 border border-red-300 text-red-800 px-2 py-0.5 rounded text-xs font-semibold">出現連號: {getConsecutiveDesc(consecutiveGroups)}</span>
                                       ) : (
                                         <span className="bg-zinc-100 border border-zinc-300 text-zinc-600 px-2 py-0.5 rounded text-xs">無連號</span>
                                       )}

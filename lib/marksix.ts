@@ -42,6 +42,8 @@ export interface GenerateOptions {
   excludeUnseenIncludeSpecial?: boolean; // Whether to include special numbers when determining seen numbers
   noConsecutivePairs?: boolean; // Do not allow 2 consecutive numbers (e.g. 22, 23)
   noConsecutiveTriplets?: boolean; // Do not allow 3 consecutive numbers (e.g. 22, 23, 24)
+  require2Tails?: boolean; // Ensure exactly one group of 2 numbers with the same ending digit
+  require3Tails?: boolean; // Ensure exactly one group of 3 numbers with the same ending digit
   use2Combos?: boolean; // Enable 2-combo generation logic based on last N draws
   combo2Count?: number;
   use3Combos?: boolean; // Enable 3-combo generation logic based on last N draws
