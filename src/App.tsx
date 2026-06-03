@@ -237,6 +237,8 @@ export default function App() {
   const [excludeUnseenIncludeSpecial, setExcludeUnseenIncludeSpecial] = useState(false);
   const [noConsecutivePairs, setNoConsecutivePairs] = useState(false);
   const [noConsecutiveTriplets, setNoConsecutiveTriplets] = useState(false);
+  const [wantTwoTails, setWantTwoTails] = useState(false);
+  const [wantThreeTails, setWantThreeTails] = useState(false);
   const [use2Combos, setUse2Combos] = useState(false);
   const [combo2Count, setCombo2Count] = useState<number>(1);
   const [use3Combos, setUse3Combos] = useState(false);
@@ -1074,6 +1076,8 @@ export default function App() {
         comboAnalysisDrawCount: 100,
         noConsecutivePairs: noConsecutivePairs,
         noConsecutiveTriplets: noConsecutiveTriplets,
+        wantTwoTails: wantTwoTails,
+        wantThreeTails: wantThreeTails,
         sumDistributionRange: sumRange
       });
 
@@ -3342,6 +3346,25 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Tail Restrictions */}
+                <div className="space-y-0.5">
+                  <Label className="text-base font-bold">尾數限制</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => setWantTwoTails(!wantTwoTails)}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${wantTwoTails ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      要二尾(一組)
+                    </button>
+                    <button
+                      onClick={() => setWantThreeTails(!wantThreeTails)}
+                      className={`px-3 py-1 border-4 border-black rounded-full font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${wantThreeTails ? "bg-[#FFE867] translate-y-0.5 translate-x-0.5 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]" : "bg-white hover:bg-zinc-50"}`}
+                    >
+                      要三尾(一組)
+                    </button>
+                  </div>
+                </div>
+
                 {/* Lucky Numbers Input */}
                 <div className="space-y-1.5 pt-1 border-t-[3px] border-black border-dashed">
                   <div className="flex flex-col gap-2">
@@ -5034,6 +5057,9 @@ export default function App() {
                           {(noConsecutivePairs || noConsecutiveTriplets) && (
                             <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
                           )}
+                          {(wantTwoTails || wantThreeTails) && (
+                            <li>尾數限制: {[wantTwoTails && "要二尾(一組)", wantThreeTails && "要三尾(一組)"].filter(Boolean).join("、")}</li>
+                          )}
                           {(preferredOddCount !== null || oddEven !== 'all') && (
                             <li>
                               單雙配置: {oddEven === 'all' && preferredOddCount === null ? '無限制' : oddEven === 'odd' ? '全單' : oddEven === 'even' ? '全雙' : `特定比例: ${preferredOddCount}單 ${preferredEvenCount}雙`}
@@ -5981,6 +6007,9 @@ export default function App() {
                   )}
                   {(noConsecutivePairs || noConsecutiveTriplets) && (
                     <li>連號限制: {[noConsecutivePairs && "不要連2號", noConsecutiveTriplets && "不要連3號"].filter(Boolean).join("、")}</li>
+                  )}
+                  {(wantTwoTails || wantThreeTails) && (
+                    <li>尾數限制: {[wantTwoTails && "要二尾(一組)", wantThreeTails && "要三尾(一組)"].filter(Boolean).join("、")}</li>
                   )}
                   {(preferredOddCount !== null || oddEven !== 'all') && (
                     <li>

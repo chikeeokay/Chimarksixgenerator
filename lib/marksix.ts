@@ -42,6 +42,8 @@ export interface GenerateOptions {
   excludeUnseenIncludeSpecial?: boolean; // Whether to include special numbers when determining seen numbers
   noConsecutivePairs?: boolean; // Do not allow 2 consecutive numbers (e.g. 22, 23)
   noConsecutiveTriplets?: boolean; // Do not allow 3 consecutive numbers (e.g. 22, 23, 24)
+  wantTwoTails?: boolean; // Require at least one group of 2 same-tail numbers
+  wantThreeTails?: boolean; // Require at least one group of 3 same-tail numbers
   use2Combos?: boolean; // Enable 2-combo generation logic based on last N draws
   combo2Count?: number;
   use3Combos?: boolean; // Enable 3-combo generation logic based on last N draws
@@ -100,6 +102,27 @@ function getTopCombos(draws: number[][], comboSize: 2 | 3, topN: number = 6, val
     .sort((a,b) => b[1] - a[1])
     .slice(0, topN)
     .map(e => ({ nums: e[0].split(',').map(Number), freq: e[1] }));
+}
+
+export function checkTailConstraints(numbers: number[], wantTwoTails?: boolean, wantThreeTails?: boolean): boolean {
+  if (!wantTwoTails && !wantThreeTails) return true;
+  
+  const freqs = new Map<number, number>();
+  for (const n of numbers) {
+    const tail = n % 10;
+    freqs.set(tail, (freqs.get(tail) || 0) + 1);
+  }
+  
+  const counts = Array.from(freqs.values());
+  
+  if (wantTwoTails) {
+    if (!counts.some(v => v === 2)) return false;
+  }
+  if (wantThreeTails) {
+    if (!counts.some(v => v === 3)) return false;
+  }
+  
+  return true;
 }
 
 export function generateBets(options: GenerateOptions): GeneratedBet[] {
@@ -308,6 +331,20 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
       if (hasTriplet) validCounts = false;
     }
 
+    if (validCounts && (options.wantTwoTails || options.wantThreeTails)) {
+      if (!checkTailConstraints(betResult.numbers, options.wantTwoTails, options.wantThreeTails)) {
+        validCounts = false;
+      } else {
+        const tailsApplied: string[] = [];
+        if (options.wantTwoTails) tailsApplied.push("二尾(一組)");
+        if (options.wantThreeTails) tailsApplied.push("三尾(一組)");
+        const msg = `尾數篩選：符合 ${tailsApplied.join(" 及 ")} 限制條件。`;
+        if (!betResult.explanations.includes(msg)) {
+          betResult.explanations.push(msg);
+        }
+      }
+    }
+
     if (options.sumDistributionRange) {
       const sum = betResult.numbers.reduce((a, b) => a + b, 0);
       if (sum < options.sumDistributionRange[0] || sum > options.sumDistributionRange[1]) {
@@ -389,6 +426,10 @@ export function generateBets(options: GenerateOptions): GeneratedBet[] {
         } else if (valid && options.noConsecutiveTriplets) {
           const sorted = [...currentCombo].sort((a, b) => a - b);
           for (let i = 0; i < 4; i++) if (sorted[i] + 1 === sorted[i + 1] && sorted[i + 1] + 1 === sorted[i + 2]) valid = false;
+        }
+
+        if (valid && (options.wantTwoTails || options.wantThreeTails)) {
+          if (!checkTailConstraints(currentCombo, options.wantTwoTails, options.wantThreeTails)) valid = false;
         }
 
         if (valid) {
