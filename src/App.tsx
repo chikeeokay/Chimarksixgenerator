@@ -649,30 +649,44 @@ export default function App() {
 
   const [liveResults, setLiveResults] = useState<DrawInfo[] | any[]>([]);
   const [liveResultsLoading, setLiveResultsLoading] = useState(true);
+  const [isRefreshingResults, setIsRefreshingResults] = useState(false);
   const [nextDrawInfo, setNextDrawInfo] = useState<{date: string, estimatedJackpot: number} | null>(null);
+
+  const fetchLiveResults = async (force: boolean = false) => {
+    if (force) {
+      setIsRefreshingResults(true);
+      toast.loading("正在連線伺服器並同步今日最新開獎結果...", { id: "refresh-results" });
+    } else {
+      setLiveResultsLoading(true);
+    }
+    try {
+      const res = await fetch(`/api/marksix${force ? '?force=true' : ''}`);
+      const data = await res.json();
+      if (data.success && data.draws && data.draws.length > 0) {
+        setLiveResults(data.draws);
+        if (data.nextDraw) {
+          setNextDrawInfo(data.nextDraw);
+        }
+        if (force) {
+          toast.success("成功載入並同步今日最新六合彩開獎結果！🎯", { id: "refresh-results" });
+        }
+      } else {
+        if (!force) setLiveResults(MOCK_PAST_RESULTS); // Fallback
+        if (force) toast.error("同步失敗，未能從官網取得今日更新，請稍後再試。", { id: "refresh-results" });
+      }
+    } catch (err) {
+      console.error("Failed to fetch live results:", err);
+      if (!force) setLiveResults(MOCK_PAST_RESULTS); // Fallback
+      if (force) toast.error("網絡連線超時，請檢查網絡連線後重試。", { id: "refresh-results" });
+    } finally {
+      setLiveResultsLoading(false);
+      setIsRefreshingResults(false);
+    }
+  };
 
   // Fetch live results on mount
   useEffect(() => {
-    async function fetchLiveResults() {
-      try {
-        const res = await fetch('/api/marksix');
-        const data = await res.json();
-        if (data.success && data.draws && data.draws.length > 0) {
-          setLiveResults(data.draws);
-          if (data.nextDraw) {
-            setNextDrawInfo(data.nextDraw);
-          }
-        } else {
-          setLiveResults(MOCK_PAST_RESULTS); // Fallback
-        }
-      } catch (err) {
-        console.error("Failed to fetch live results, using mock:", err);
-        setLiveResults(MOCK_PAST_RESULTS); // Fallback
-      } finally {
-        setLiveResultsLoading(false);
-      }
-    }
-    fetchLiveResults();
+    fetchLiveResults(false);
   }, []);
 
   // Helper to extract numbers array depending on if we have formatted dates or not
@@ -5226,9 +5240,20 @@ export default function App() {
                     </div>
                   )}
                   
-                  <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
-                    最近十期開獎結果
-                  </span>
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 mt-2">
+                    <span className="inline-block font-black text-lg sm:text-xl text-black bg-[#FFD700] px-3 py-1 border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" style={{ paddingTop: '1px', paddingRight: '12px', paddingBottom: '1px' }}>
+                      最近十期開獎結果
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isRefreshingResults}
+                      onClick={() => fetchLiveResults(true)}
+                      className={`inline-flex items-center gap-1 font-black text-xs sm:text-sm text-black bg-[#FFE867] hover:bg-[#FFD700] px-3 py-1.5 border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-none transition-all active:translate-y-0.5 select-none ${isRefreshingResults ? "animate-pulse cursor-not-allowed opacity-85" : "cursor-pointer animate-none"}`}
+                    >
+                      <span className={`${isRefreshingResults ? "animate-spin" : ""}`}>🔄</span>
+                      <span>{isRefreshingResults ? "正在同步..." : "手動同步最新開獎"}</span>
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="w-full space-y-2">

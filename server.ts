@@ -131,7 +131,8 @@ IMPORTANT RULES:
 
   app.get("/api/marksix", async (req, res) => {
     const now = Date.now();
-    if (cachedMarkSixData && (now - lastCacheTime < CACHE_TTL)) {
+    const force = req.query.force === "true";
+    if (cachedMarkSixData && (now - lastCacheTime < CACHE_TTL) && !force) {
       console.log("Serving Mark Six draws from cache");
       return res.json(cachedMarkSixData);
     }
