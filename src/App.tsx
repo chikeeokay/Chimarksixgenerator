@@ -1146,7 +1146,6 @@ export default function App() {
           "尾數與共現篩選：完美融入大數據升級之『二尾（一組）』與『三尾（一組）』複合共現對位對策，強勢優化尾數關聯性。",
           "常態總和限制：所有生成注項之總和均嚴格規約在黃金 110-180 出球高發區間，物理篩除極端低機率總和。"
         ];
-        setAiReasoning(explanations);
 
         const baseGenerateOptions = {
           ranges: [{start: 1, end: 49}],
@@ -1169,6 +1168,121 @@ export default function App() {
           wantTwoTails: true, // Force at least group of 2 same-tails
           wantThreeTails: Math.random() > 0.4, // Alternating group of 3 same-tails for diverse probability optimization
         };
+
+        if (aiBankerMode && aiBetCount >= 10) {
+          setAiReasoning([
+            `啟動大數據拖膽模式：因注數較多，AI 已自動改為為您精研「膽拖」配搭，以貼近總預算 $${aiBankerBudget} 極大化覆蓋號碼！`,
+            ...explanations,
+          ]);
+
+          const betsCountToGenerate = aiBankerBetCount || 1;
+          const configs = generateBankerConfigs(aiBankerBudget, betsCountToGenerate);
+
+          const tempBets: any[] = [];
+          let reclaimedBudget = 0;
+
+          for (let i = 0; i < configs.length; i++) {
+            const bestConfig = configs[i];
+            
+            const rawBets = generateBets({
+              ...baseGenerateOptions,
+              count: Math.ceil((bestConfig.bCount + bestConfig.legsLength) / 2 || 6),
+              aiStrategy: i % 2 === 0 ? "balanced" : "cold", // Mix strategies
+            });
+            
+            const merged = Array.from(new Set(rawBets.flatMap(b => b.numbers))).sort(() => Math.random() - 0.5);
+            const targetTotal = bestConfig.bCount + bestConfig.legsLength;
+            const selectedNums = merged.slice(0, targetTotal);
+            while (selectedNums.length < targetTotal) {
+               const nextRanked = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 1 })[0].numbers));
+               for (const n of nextRanked) {
+                  if (!selectedNums.includes(n) && selectedNums.length < targetTotal) {
+                    selectedNums.push(n);
+                  }
+               }
+            }
+            selectedNums.sort(() => Math.random() - 0.5);
+            const bCount = bestConfig.bCount;
+            const bankers = selectedNums.slice(0, bCount).sort((a,b)=>a-b);
+            const legs = selectedNums.slice(bCount).sort((a,b)=>a-b);
+            
+            const isBanker = bestConfig.isBanker && bankers.length > 0 && legs.length >= 2 && (bankers.length + legs.length >= 7);
+            
+            if (isBanker) {
+              const sum = [...bankers, ...legs].reduce((a, b) => a + b, 0);
+              tempBets.push({
+                numbers: [...bankers, ...legs],
+                explanations: [
+                  `AI 大數據極致膽拖配搭 [第 ${i+1} 組]：號碼總和為 ${sum}。精選 ${bankers.length}膽 ${legs.length}腳（結合大數據二、三尾複合共現技術）。`,
+                  `大數據演算：利用最新一期開彩之高共現與飽和衰減制動策略生成。`
+                ],
+                isBankerLegs: true,
+                bankersCount: bCount
+              });
+            } else {
+              reclaimedBudget += bestConfig.cost;
+            }
+          }
+
+          // Redistribute reclaimed budget to expand legs of genuine AI banker configurations
+          if (reclaimedBudget >= 10 && tempBets.length > 0) {
+            let expanded = true;
+            let attempts = 0;
+            while (expanded && reclaimedBudget >= 10 && attempts < 1000) {
+              expanded = false;
+              attempts++;
+              const indices = Array.from({ length: tempBets.length }, (_, idx) => idx).sort(() => Math.random() - 0.5);
+              for (const idx of indices) {
+                const bet = tempBets[idx];
+                const bCount = bet.bankersCount;
+                const currentLegsLength = bet.numbers.length - bCount;
+                const nextL = currentLegsLength + 1;
+                if (nextL > 40) continue;
+
+                const currentCost = getCombinationsCount(currentLegsLength, 6 - bCount) * 10;
+                const nextCost = getCombinationsCount(nextL, 6 - bCount) * 10;
+                const costIncrease = nextCost - currentCost;
+
+                if (reclaimedBudget >= costIncrease) {
+                  const nextRandomPool = Array.from(new Set(generateBets({ ...baseGenerateOptions, count: 5 }).flatMap(b => b.numbers)));
+                  const newLeg = nextRandomPool.find(n => !bet.numbers.includes(n));
+                  if (newLeg) {
+                    const bankers = bet.numbers.slice(0, bCount);
+                    const legs = [...bet.numbers.slice(bCount), newLeg].sort((a,b)=>a-b);
+                    bet.numbers = [...bankers, ...legs];
+                    const updatedCost = getCombinationsCount(legs.length, 6 - bCount) * 10;
+                    const sum = bet.numbers.reduce((a: number, b: number) => a + b, 0);
+                    bet.explanations = [
+                      `AI 大數據極致膽拖配搭 [第 ${idx+1} 組]：號碼總和為 ${sum}。精選 ${bCount}膽 ${legs.length}腳（結合大數據二、三尾複合共現技術）。`,
+                      `大數據演算：利用最新一期開彩之高共現與飽和衰減制動策略生成。`
+                    ];
+                    reclaimedBudget -= costIncrease;
+                    expanded = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          setTimeout(() => {
+            setGeneratedBets(tempBets);
+            setSpecialCoverBets([]);
+            setUndoStack([]);
+            setIsGenerating(false);
+            toast.success(`成功載入「AI 推薦大數據 ${tempBets.length} 組膽拖方案」！🎯`);
+            setTimeout(() => {
+              const resultsSection = document.getElementById("results");
+              if (resultsSection) {
+                resultsSection.scrollIntoView({ behavior: "smooth" });
+              }
+            }, 200);
+          }, 400);
+
+          return;
+        }
+
+        setAiReasoning(explanations);
 
         const generated = generateBets({
           ...baseGenerateOptions,
