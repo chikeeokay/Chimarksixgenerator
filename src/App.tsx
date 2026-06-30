@@ -56,7 +56,11 @@ import {
   Undo,
   Trash2,
   Cpu,
-  Smartphone
+  Smartphone,
+  PlusCircle,
+  Plus,
+  LayoutGrid,
+  FileText
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { QRCodeSVG } from 'qrcode.react';
@@ -641,6 +645,12 @@ export default function App() {
   const [coverBetCount, setCoverBetCount] = useState(3);
   const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
   const [specialCoverBets, setSpecialCoverBets] = useState<any[]>([]);
+
+  const [isManualInputOpen, setIsManualInputOpen] = useState(false);
+  const [manualCurrentBet, setManualCurrentBet] = useState<number[]>([]);
+  const [manualBetsList, setManualBetsList] = useState<number[][]>([]);
+  const [manualText, setManualText] = useState("");
+  const [manualInputTab, setManualInputTab] = useState<"grid" | "text">("grid");
 
   useEffect(() => {
     setBankers([]);
@@ -4386,6 +4396,18 @@ export default function App() {
                   >
                     上載系統截圖重新生成
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 min-w-[200px] bg-[#60A5FA] hover:bg-[#3B82F6] hover:text-white text-black h-auto py-2 px-3 text-base sm:text-lg font-black border-[3px] border-black rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all"
+                    onClick={() => {
+                      setManualBetsList([]);
+                      setManualCurrentBet([]);
+                      setManualText("");
+                      setIsManualInputOpen(true);
+                    }}
+                  >
+                    手動輸入自選號碼
+                  </Button>
                   <input 
                     type="file" 
                     id="regenerate-api-upload" 
@@ -5208,8 +5230,8 @@ export default function App() {
                   {generatedBets.map((bet, index) => (
                     <div key={index} className={`flex flex-col items-center gap-1.5 ${bet.isBankerLegs ? 'w-full max-w-[600px]' : 'w-fit'}`}>
                       <div
-                        className={`max-w-[96vw] overflow-hidden border-[3px] border-black rounded-[24px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 z-0 ${isAiGenerated ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''} ${bet.isBankerLegs ? 'w-full' : 'w-fit'}`}
-                        onClick={() => isAiGenerated && setViewingBetExpl({ index, bet })}
+                        className={`max-w-[96vw] overflow-hidden border-[3px] border-black rounded-[24px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all bg-white flex p-0.5 z-0 ${(isAiGenerated || bet.isManual) ? 'cursor-pointer hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''} ${bet.isBankerLegs ? 'w-full' : 'w-fit'}`}
+                        onClick={() => (isAiGenerated || bet.isManual) && setViewingBetExpl({ index, bet })}
                       >
                         <div className="flex items-center justify-start gap-1 sm:gap-2 min-h-[42px] sm:min-h-[50px] pr-1 pointer-events-none w-full">
                           <div className="text-base sm:text-lg font-black text-black w-8 sm:w-10 transform -rotate-12 ml-1.5 sm:ml-2 shrink-0 text-center leading-none">
@@ -5407,6 +5429,13 @@ export default function App() {
                         </div>
                         <span className="w-full text-xs text-zinc-500 mt-2">💡 點擊上方任何一注號碼，可即時查看專屬的大數據選號說明。</span>
                       </>
+                    ) : (generatedBets.length > 0 && generatedBets[0].isManual) ? (
+                      <div className="w-full text-left bg-[#eff6ff] border-2 border-blue-400 rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
+                        <div className="font-black text-blue-900 flex items-center gap-1.5 text-base sm:text-lg">
+                          <Settings2 className="w-5 h-5 shrink-0 text-blue-600" /> 
+                          這是手動輸入自選號碼
+                        </div>
+                      </div>
                     ) : (generatedBets.length > 0 && generatedBets[0].id?.startsWith('unselected-cover-')) ? (
                       <div className="w-full text-left bg-white border-2 border-black rounded-lg p-3 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mt-2 mb-3">
                         <div className="font-black text-black mb-2 flex items-center gap-1.5 text-base sm:text-lg">
@@ -5476,6 +5505,28 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Visible QR Code section directly on the page */}
+                <div className="mt-4 sm:mt-6 bg-white border-[3px] sm:border-4 border-black rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-sm mx-auto w-full flex flex-col items-center justify-center text-center">
+                  <h4 className="font-black text-base sm:text-lg mb-2 text-black flex items-center gap-1.5 justify-center">
+                    📲 快速對獎 QR Code
+                  </h4>
+                  <div className="p-3 bg-white border-2 border-black rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] inline-block">
+                    <QRCodeSVG value={JSON.stringify(generatedBets.flatMap(b => {
+                      if (b.isBankerLegs && b.bankersCount) {
+                        const bankers = b.numbers.slice(0, b.bankersCount);
+                        const legs = b.numbers.slice(b.bankersCount);
+                        const requiredLegs = 6 - bankers.length;
+                        if (requiredLegs > 0) return getCombos(legs, requiredLegs).map(c => [...bankers, ...c].sort((x,y)=>x-y));
+                        if (requiredLegs === 0) return [[...bankers].sort((x,y)=>x-y)];
+                      }
+                      return [b.numbers];
+                    }))} size={150} />
+                  </div>
+                  <p className="mt-2 text-xs font-black text-zinc-600">
+                    手機掃描快速核對・或下載圖片保存
+                  </p>
                 </div>
 
               </div>
@@ -6369,6 +6420,13 @@ export default function App() {
                   ))}
                 </ul>
               </div>
+            ) : (generatedBets.length > 0 && generatedBets[0].isManual) ? (
+              <div className="text-left bg-[#eff6ff] border-[3px] border-blue-400 rounded-lg p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <div className="font-black text-blue-900 flex items-center gap-1.5 text-lg">
+                  <Settings2 className="w-5 h-5 shrink-0 text-blue-600" /> 
+                  這是手動輸入自選號碼
+                </div>
+              </div>
             ) : (generatedBets.length > 0 && generatedBets[0].id?.startsWith('unselected-cover-')) ? (
               <div className="text-left bg-white border-[3px] border-black rounded-lg p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                 <div className="font-black text-black mb-3 flex items-center gap-1.5 text-lg">
@@ -6474,6 +6532,278 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isManualInputOpen} onOpenChange={setIsManualInputOpen}>
+        <DialogContent className="w-[95vw] max-w-2xl bg-white border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col overflow-hidden">
+          <DialogHeader className="bg-[#FFE867] border-b-4 border-black p-4 sm:p-5 m-0 block shrink-0 text-black">
+            <DialogTitle className="text-xl sm:text-2xl font-black flex items-center gap-2 m-0 p-0">
+              <PlusCircle className="w-6 h-6 sm:w-7 sm:h-7" />
+              手動輸入自選號碼
+            </DialogTitle>
+            <DialogDescription className="text-zinc-700 font-bold text-xs sm:text-sm mt-1">
+              輸入您自己的六合彩號碼（可一注或多注），以便下載截圖或進行核對。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-4 sm:p-6 overflow-y-auto max-h-[70vh] flex flex-col gap-4 bg-white">
+            {/* Tabs List */}
+            <div className="flex border-4 border-black rounded-xl overflow-hidden bg-zinc-100">
+              <button
+                type="button"
+                className={`flex-1 py-2 sm:py-2.5 font-black text-sm sm:text-base flex items-center justify-center gap-1.5 transition-colors ${manualInputTab === "grid" ? "bg-black text-[#FFE867]" : "hover:bg-zinc-200 text-zinc-700 bg-white"}`}
+                onClick={() => setManualInputTab("grid")}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                號碼網格點選
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-2 sm:py-2.5 font-black text-sm sm:text-base flex items-center justify-center gap-1.5 transition-colors ${manualInputTab === "text" ? "bg-black text-[#FFE867]" : "hover:bg-zinc-200 text-zinc-700 bg-white"}`}
+                onClick={() => setManualInputTab("text")}
+              >
+                <FileText className="w-4 h-4" />
+                快速文字輸入
+              </button>
+            </div>
+
+            {manualInputTab === "grid" ? (
+              <div className="flex flex-col gap-4">
+                <div className="bg-yellow-50 border-2 border-black/10 p-3 rounded-xl">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-black text-sm text-zinc-800">
+                      當前已選：<span className="text-blue-600 text-base">{manualCurrentBet.length}</span> / 6 個號碼
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-2 border-black font-black bg-white hover:bg-zinc-100 text-xs py-1 px-2"
+                        onClick={() => {
+                          const rand: number[] = [];
+                          while(rand.length < 6) {
+                            const n = Math.floor(Math.random() * 49) + 1;
+                            if(!rand.includes(n)) rand.push(n);
+                          }
+                          setManualCurrentBet(rand.sort((a: number, b: number) => a - b));
+                        }}
+                      >
+                        隨機一注
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-2 border-black font-black bg-red-100 hover:bg-red-200 text-red-700 text-xs py-1 px-2"
+                        onClick={() => setManualCurrentBet([])}
+                      >
+                        清空
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Show Current Selected Balls preview */}
+                  <div className="flex gap-1.5 justify-center flex-wrap min-h-[46px] items-center border-t border-black/10 pt-2">
+                    {manualCurrentBet.length === 0 ? (
+                      <span className="text-xs text-zinc-500 font-bold">請點擊下方號碼球選擇 6 個號碼...</span>
+                    ) : (
+                      manualCurrentBet.map(n => {
+                        const color = getBallColor(n);
+                        const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                        return (
+                          <div key={n} className={`w-8 h-8 rounded-full border-2 border-black flex items-center justify-center font-black text-sm text-black ${bgColor} shadow-[1px_1px_0px_rgba(0,0,0,1)]`}>
+                            {n}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Grid 1 to 49 */}
+                <div className="grid grid-cols-7 gap-1.5 sm:gap-2 justify-center">
+                  {Array.from({ length: 49 }, (_, i) => i + 1).map((n) => {
+                    const isSelected = manualCurrentBet.includes(n);
+                    const color = getBallColor(n);
+                    const bgColor = color === "red" 
+                      ? (isSelected ? "bg-[#FF5555] text-white" : "bg-[#FFCCCC] hover:bg-[#FFAAAA] text-black") 
+                      : color === "blue" 
+                        ? (isSelected ? "bg-[#2563eb] text-white" : "bg-[#CCEEFF] hover:bg-[#99DDFF] text-black") 
+                        : (isSelected ? "bg-[#16a34a] text-white" : "bg-[#CCFFCC] hover:bg-[#AAFFAA] text-black");
+
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setManualCurrentBet(prev => prev.filter(x => x !== n));
+                          } else {
+                            if (manualCurrentBet.length >= 6) {
+                              toast.warning("每注最多只能選擇 6 個號碼喔！");
+                              return;
+                            }
+                            setManualCurrentBet(prev => [...prev, n].sort((a: number, b: number) => a - b));
+                          }
+                        }}
+                        className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 border-black flex items-center justify-center font-black text-xs sm:text-base transition-all shadow-[1px_1px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-[1px] ${bgColor}`}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  className="w-full bg-[#10B981] hover:bg-[#059669] text-black font-black py-3 border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-1.5"
+                  disabled={manualCurrentBet.length !== 6}
+                  onClick={() => {
+                    setManualBetsList(prev => [...prev, [...manualCurrentBet]]);
+                    setManualCurrentBet([]);
+                    toast.success("成功新增一注自選號碼！🎯");
+                  }}
+                >
+                  <Plus className="w-5 h-5" />
+                  加入此注
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="text-xs font-bold text-zinc-600 bg-blue-50 border-2 border-black/10 p-3 rounded-xl leading-relaxed">
+                  <p className="font-black text-black text-sm mb-1">💡 格式提示：</p>
+                  每行代表一注，輸入 6 個號碼（可用空格、逗號或斜線分隔）。<br/>
+                  例如：<br/>
+                  <code className="bg-white px-1 py-0.5 rounded border border-black/10 font-mono text-zinc-800">05 12 19 20 34 36</code><br/>
+                  <code className="bg-white px-1 py-0.5 rounded border border-black/10 font-mono text-zinc-800">1, 15, 23, 29, 30, 48</code>
+                </div>
+
+                <textarea
+                  className="w-full h-32 border-4 border-black p-3 rounded-xl font-mono text-sm focus:outline-none resize-none shadow-[2px_2px_0px_rgba(0,0,0,1)] text-black bg-white"
+                  placeholder="請在此處貼上或輸入號碼..."
+                  value={manualText}
+                  onChange={(e) => setManualText(e.target.value)}
+                />
+
+                <Button
+                  className="w-full bg-[#3B82F6] hover:bg-[#2563EB] text-white font-black py-3 border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-1.5"
+                  onClick={() => {
+                    const lines = manualText.split("\n");
+                    let successCount = 0;
+                    const parsedBets: number[][] = [];
+                    
+                    lines.forEach(line => {
+                      if (!line.trim()) return;
+                      const nums = line.match(/\d+/g);
+                      if (nums) {
+                        const parsed = nums.map(Number).filter(n => n >= 1 && n <= 49);
+                        const unique = (Array.from(new Set(parsed)) as number[]).sort((a: number, b: number) => a - b);
+                        if (unique.length === 6) {
+                          parsedBets.push(unique);
+                          successCount++;
+                        }
+                      }
+                    });
+
+                    if (successCount > 0) {
+                      setManualBetsList(prev => [...prev, ...parsedBets]);
+                      setManualText("");
+                      toast.success(`成功解析並導入 ${successCount} 注號碼！🎉`);
+                    } else {
+                      toast.error("未能識別到有效的 6 碼注項，請檢查格式是否正確！");
+                    }
+                  }}
+                >
+                  <FileText className="w-5 h-5 text-white" />
+                  解析並添加
+                </Button>
+              </div>
+            )}
+
+            {/* Added Bets Section */}
+            {manualBetsList.length > 0 && (
+              <div className="border-t-4 border-black border-dashed pt-4 mt-2">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-black text-sm text-zinc-800">
+                    已添加的注項 ({manualBetsList.length} 注)：
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 border-2 border-black font-black bg-red-100 hover:bg-red-200 text-red-700 text-xs py-1 px-2"
+                    onClick={() => setManualBetsList([])}
+                  >
+                    全部清空
+                  </Button>
+                </div>
+
+                <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+                  {manualBetsList.map((bet, idx) => (
+                    <div key={idx} className="flex justify-between items-center bg-zinc-50 border-2 border-black p-2 rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-xs text-zinc-500 w-8">#{idx+1}</span>
+                        <div className="flex gap-1 flex-wrap">
+                          {bet.map((n, ballIdx) => {
+                            const color = getBallColor(n);
+                            const bgColor = color === "red" ? "bg-[#FF9999]" : color === "blue" ? "bg-[#99CCFF]" : "bg-[#99FF99]";
+                            return (
+                              <div key={ballIdx} className={`w-6 h-6 rounded-full border border-black flex items-center justify-center font-black text-xs text-black ${bgColor}`}>
+                                {n}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => setManualBetsList(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="bg-zinc-100 border-t-4 border-black p-4 sm:p-5 flex flex-row gap-2 justify-end w-full">
+            <Button
+              variant="outline"
+              className="flex-1 sm:flex-none border-4 border-black font-black rounded-xl h-12"
+              onClick={() => setIsManualInputOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              className="flex-1 sm:flex-none bg-[#FFE867] hover:bg-[#FFD700] text-black border-4 border-black font-black rounded-xl h-12 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
+              disabled={manualBetsList.length === 0}
+              onClick={() => {
+                const finalBets = manualBetsList.map((numbers, idx) => ({
+                  numbers,
+                  explanations: [
+                    "這是手動輸入自選號碼"
+                  ],
+                  isManual: true
+                }));
+                setGeneratedBets(finalBets);
+                setSpecialCoverBets([]);
+                setUndoStack([]);
+                setIsAiGenerated(false); // Disable AI generated properties
+                setIsManualInputOpen(false);
+                toast.success(`成功載入您的 ${finalBets.length} 注自選號碼！🎯`);
+                setTimeout(() => {
+                  const resultsSection = document.getElementById("results");
+                  if (resultsSection) {
+                    resultsSection.scrollIntoView({ behavior: "smooth" });
+                  }
+                }, 200);
+              }}
+            >
+              確認生成
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
         <DialogContent className={`w-[95vw] bg-[#f0fdf4] border-[4px] border-black rounded-[24px] p-0 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col mb-[10vh] sm:top-1/2 sm:-translate-y-1/2 overflow-hidden transition-all duration-300 ${aiBetCount >= 10 ? 'max-w-md md:max-w-3xl' : 'max-w-md'}`}>
@@ -6724,6 +7054,35 @@ export default function App() {
 
 
             </div>
+
+            {generatedBets.length > 0 && !checkResults && (
+              <div className="bg-[#eff6ff] border-[3px] border-blue-400 p-3 sm:p-4 rounded-2xl flex flex-col gap-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-1">
+                <p className="text-xs sm:text-sm font-black text-blue-950 text-center leading-normal">
+                  💡 偵測到您目前畫面已有自選/生成好的號碼！
+                  <br />
+                  建議點選下方最方便的<b>「直接核對」</b>按鈕：
+                </p>
+                <Button
+                  onClick={() => {
+                    const bets = generatedBets.flatMap(b => {
+                      if (b.isBankerLegs && b.bankersCount) {
+                        const bankers = b.numbers.slice(0, b.bankersCount);
+                        const legs = b.numbers.slice(b.bankersCount);
+                        const requiredLegs = 6 - bankers.length;
+                        if (requiredLegs > 0) return getCombos(legs, requiredLegs).map(c => [...bankers, ...c].sort((x,y)=>x-y));
+                        if (requiredLegs === 0) return [[...bankers].sort((x,y)=>x-y)];
+                      }
+                      return [b.numbers];
+                    });
+                    handlePerformCheck(bets);
+                  }}
+                  className="w-full bg-[#3B82F6] hover:bg-[#2563EB] text-white border-4 border-black font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded-xl h-11 sm:h-12 text-base sm:text-lg flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-5 h-5 text-white animate-bounce" />
+                  直接核對當前畫面的 {generatedBets.length} 注號碼 🎯
+                </Button>
+              </div>
+            )}
 
             {!checkResults ? (
               <Tabs value={checkMethod} onValueChange={(val) => { setCheckMethod(val as any); setCheckResults(null); }} className="w-full">
