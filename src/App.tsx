@@ -1065,7 +1065,47 @@ export default function App() {
     }
 
     if (luckyNumbers.length > 6) {
-      toast.error("幸運號碼最多只能設定 6 個");
+      setIsGenerating(true);
+      try {
+        const bets = [];
+        const maxAttempts = betCount * 100;
+        let attempts = 0;
+        const seen = new Set<string>();
+        
+        while (bets.length < betCount && attempts < maxAttempts) {
+          attempts++;
+          const shuffled = [...luckyNumbers].sort(() => Math.random() - 0.5);
+          const selected = shuffled.slice(0, 6).sort((a: number, b: number) => a - b);
+          const key = selected.join(',');
+          if (!seen.has(key)) {
+            seen.add(key);
+            bets.push({
+              numbers: selected,
+              explanations: ["從您選擇的多個幸運號碼中隨機生成"],
+              isManual: false
+            });
+          }
+        }
+        
+        if (bets.length === 0) {
+          toast.error("無法從這些幸運號碼生成足夠的不重複組合");
+          setIsGenerating(false);
+          return;
+        }
+
+        setTimeout(() => {
+          setGeneratedBets(bets);
+          setSpecialCoverBets([]);
+          setUndoStack([]);
+          setIsGenerating(false);
+          setTimeout(() => {
+            document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }, 400);
+      } catch (err) {
+        setIsGenerating(false);
+        toast.error("生成失敗");
+      }
       return;
     }
 
@@ -3782,7 +3822,7 @@ export default function App() {
                             })}
                           </div>
                         ) : (
-                          <span className="text-zinc-500">點擊選擇號碼 (最多 6 個) ...</span>
+                          <span className="text-zinc-500">點擊選擇號碼 (如超過 6 個將隨機組合) ...</span>
                         )}
                       </Button>
                       <Dialog open={isLuckyDialogOpen} onOpenChange={setIsLuckyDialogOpen}>
@@ -3790,7 +3830,7 @@ export default function App() {
                           <DialogHeader>
                             <DialogTitle className="text-xl font-black">選擇幸運號碼</DialogTitle>
                             <DialogDescription className="font-bold text-black/80">
-                              已選 {luckyNumbers.length} / 6 個號碼
+                              已選 {luckyNumbers.length} 個號碼
                             </DialogDescription>
                           </DialogHeader>
                           
@@ -3809,8 +3849,8 @@ export default function App() {
                                     if (isSelected) {
                                       setLuckyNumbers(prev => prev.filter(n => n !== num));
                                     } else {
-                                      if (luckyNumbers.length >= 6) {
-                                        toast.error("最多只能選擇 6 個幸運號碼");
+                                      if (luckyNumbers.length >= 49) {
+                                        toast.error("最多只能選擇 49 個幸運號碼");
                                         return;
                                       }
                                       setLuckyNumbers(prev => [...prev, num].sort((a, b) => a - b));
@@ -4519,7 +4559,8 @@ export default function App() {
                     const expectedUnique = 49 * (1 - Math.pow(43 / 49, generatedBets.length)); // Expected unique numbers for purely random selection
                     // Recommend Banker only if unique numbers are very low (e.g. <= 16) so combinations don't explode
                     const hasBankers = generatedBets.some((b: any) => b.isBankerLegs === true || b.type === "banker");
-                    const isHighlyRepeated = !hasBankers && generatedBets.length >= 3 && uniqueGeneratedNumbers.length > 6 && uniqueGeneratedNumbers.length <= 16;
+                    const isSelfSelected = generatedBets.some((b: any) => b.isManual || (b.explanations && b.explanations.some((e: string) => e.includes("幸運號碼"))));
+                    const isHighlyRepeated = !hasBankers && !isSelfSelected && generatedBets.length >= 3 && uniqueGeneratedNumbers.length > 6 && uniqueGeneratedNumbers.length <= 16;
 
                     const getCombinationsCount = (n: number, k: number) => {
                       if (k > n || k < 0) return 0;
@@ -5500,7 +5541,7 @@ export default function App() {
                             </li>
                           )}
                           {excludedNumbers.length > 0 && <li>排除號碼: {excludedNumbers.join(', ')}</li>}
-                          {luckyNumbers.length > 0 && <li>必含號碼: {luckyNumbers.join(', ')}</li>}
+                          {luckyNumbers.length > 0 && <li>{luckyNumbers.length > 6 ? '限定從以下幸運號碼中組合: ' : '必含號碼: '}{luckyNumbers.join(', ')}</li>}
                         </ul>
                       </div>
                     )}
@@ -6501,7 +6542,7 @@ export default function App() {
                     <li>排除號碼: {excludedNumbers.join(', ')}</li>
                   )}
                   {luckyNumbers.length > 0 && (
-                    <li>必含號碼: {luckyNumbers.join(', ')}</li>
+                    <li>{luckyNumbers.length > 6 ? '限定從以下幸運號碼中組合: ' : '必含號碼: '}{luckyNumbers.join(', ')}</li>
                   )}
                 </ul>
               </div>
