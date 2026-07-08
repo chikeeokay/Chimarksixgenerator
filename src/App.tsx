@@ -2485,15 +2485,41 @@ export default function App() {
         throw new Error("截圖資料異常，可能是畫面尚未準備好，請重試");
       }
 
-      const a = document.createElement('a');
-      a.href = dataUrl;
       const fileDate = generationTime || new Date();
       const yr = fileDate.getFullYear();
       const mo = String(fileDate.getMonth() + 1).padStart(2, '0');
       const dy = String(fileDate.getDate()).padStart(2, '0');
       const hr = String(fileDate.getHours()).padStart(2, '0');
       const mn = String(fileDate.getMinutes()).padStart(2, '0');
-      a.download = `marksix${yr}${mo}${dy}${hr}${mn}.png`;
+      const fileName = `marksix${yr}${mo}${dy}${hr}${mn}.png`;
+
+      // For mobile devices, we can use the Web Share API if available to share the image
+      // or open it directly, as auto-download sometimes fails on iOS Safari.
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile && navigator.share) {
+        try {
+          const res = await fetch(dataUrl);
+          const blob = await res.blob();
+          const file = new File([blob], fileName, { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: '幸運號碼',
+            });
+            toast.success("成功分享圖片！", { id: "capture-toast" });
+            return;
+          }
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.error("分享失敗:", err);
+          }
+        }
+      }
+
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -6370,7 +6396,7 @@ export default function App() {
       </Dialog>
 
       {/* Hidden container exclusively formatted for Screenshot output */}
-      <div className="fixed top-0 left-0 -z-50 pointer-events-none opacity-0 overflow-hidden w-0 h-0">
+      <div className="fixed -left-[9999px] top-0 pointer-events-none z-[-50]">
         <div id="capture-area" className={`bg-[#1e1e1e] font-sans flex flex-col p-8 items-center ${generatedBets.length >= 13 ? 'w-[1450px]' : generatedBets.length >= 11 ? 'w-[1000px]' : (isAiGenerated && aiReasoning.length > 0) ? 'w-[650px]' : 'w-[500px]'}`}>
           <h1 className="text-[40px] font-black tracking-widest mb-6 text-[#FFE867] leading-none">
             您的幸運號碼
