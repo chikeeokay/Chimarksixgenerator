@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -224,6 +225,9 @@ export default function App() {
   const [oddEven, setOddEven] = useState<"all" | "odd" | "even">("all");
   const [colors, setColors] = useState<BallColor[]>(["red", "blue", "green"]);
   const [luckyNumbers, setLuckyNumbers] = useState<number[]>([]);
+  const [useLuckyBankerMode, setUseLuckyBankerMode] = useState<boolean>(false);
+  const [luckyBankerBudget, setLuckyBankerBudget] = useState(100);
+  const [luckyBankerBetCount, setLuckyBankerBetCount] = useState(1);
   const [excludedNumbers, setExcludedNumbers] = useState<number[]>([]);
   const [isLuckyDialogOpen, setIsLuckyDialogOpen] = useState(false);
   const [isExcludedDialogOpen, setIsExcludedDialogOpen] = useState(false);
@@ -1067,23 +1071,58 @@ export default function App() {
     if (luckyNumbers.length > 6) {
       setIsGenerating(true);
       try {
-        const bets = [];
-        const maxAttempts = betCount * 100;
-        let attempts = 0;
+        const bets: any[] = [];
         const seen = new Set<string>();
         
-        while (bets.length < betCount && attempts < maxAttempts) {
-          attempts++;
-          const shuffled = [...luckyNumbers].sort(() => Math.random() - 0.5);
-          const selected = shuffled.slice(0, 6).sort((a: number, b: number) => a - b);
-          const key = selected.join(',');
-          if (!seen.has(key)) {
-            seen.add(key);
+        if (useLuckyBankerMode) {
+          const targetBetsCount = luckyBankerBetCount || 1;
+          const configs = generateBankerConfigs(luckyBankerBudget, targetBetsCount);
+          
+          for (let i = 0; i < configs.length; i++) {
+            const bestConfig = configs[i];
+            const shuffled = [...luckyNumbers].sort(() => Math.random() - 0.5);
+            
+            const bCount = bestConfig.bCount;
+            const maxLegs = Math.min(bestConfig.legsLength, shuffled.length - bCount);
+            
+            const bankers = shuffled.slice(0, bCount).sort((a,b)=>a-b);
+            const legs = shuffled.slice(bCount, bCount + maxLegs).sort((a,b)=>a-b);
+            const selected = [...bankers, ...legs];
+            
+            const actualCost = getCombinationsCount(maxLegs, 6 - bCount) * 10;
+            
             bets.push({
-              numbers: selected,
-              explanations: ["從您選擇的多個幸運號碼中隨機生成"],
-              isManual: false
+               numbers: selected,
+               isBankerLegs: true,
+               bankersCount: bCount,
+               explanations: [`自選號碼智能組合 - ${bCount}膽${maxLegs}拖 (10元一注此拖膽成本：$${actualCost})`],
+               isManual: false
             });
+          }
+        } else {
+          const maxAttempts = betCount * 100;
+          let attempts = 0;
+          
+          while (bets.length < betCount && attempts < maxAttempts) {
+            attempts++;
+            
+            // Fisher-Yates shuffle
+            const shuffled = [...luckyNumbers];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            
+            const selected = shuffled.slice(0, 6).sort((a: number, b: number) => a - b);
+            const key = selected.join(',');
+            if (!seen.has(key)) {
+              seen.add(key);
+              bets.push({
+                numbers: selected,
+                explanations: ["從您選擇的多個幸運號碼中隨機抽取"],
+                isManual: false
+              });
+            }
           }
         }
         
@@ -3848,7 +3887,7 @@ export default function App() {
                             })}
                           </div>
                         ) : (
-                          <span className="text-zinc-500">點擊選擇號碼 (如超過 6 個將隨機組合) ...</span>
+                          <span className="text-zinc-500">點擊選擇號碼 (可選多於6個作智能膽拖) ...</span>
                         )}
                       </Button>
                       <Dialog open={isLuckyDialogOpen} onOpenChange={setIsLuckyDialogOpen}>
@@ -3924,8 +3963,67 @@ export default function App() {
                       )}
                     </div>
                     
+                    {luckyNumbers.length > 6 && (
+                      <div className="bg-zinc-100 p-2.5 rounded-xl border-2 border-zinc-200">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="lucky-banker-mode" className="text-sm font-bold text-zinc-700 cursor-pointer flex items-center gap-2">
+                            啟用膽拖生成 (隨機 2-4 膽)
+                          </Label>
+                          <Switch
+                            id="lucky-banker-mode"
+                            checked={useLuckyBankerMode}
+                            onCheckedChange={setUseLuckyBankerMode}
+                          />
+                        </div>
+                        
+                        {useLuckyBankerMode && (
+                          <div className="pt-4 space-y-5 border-t-2 border-zinc-200 mt-3">
+                            <div>
+                              <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
+                                <span>總預算</span>
+                                <span>${luckyBankerBudget}</span>
+                              </div>
+                              <Slider
+                                min={100}
+                                max={800}
+                                step={10}
+                                value={[luckyBankerBudget]}
+                                onValueChange={(val) => setLuckyBankerBudget(Array.isArray(val) ? val[0] : val)}
+                                className="py-1 cursor-pointer"
+                              />
+                              <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
+                                <span>$100</span>
+                                <span>$800</span>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="flex justify-between text-xs font-bold text-zinc-600 mb-2">
+                                <span>生成拖膽注數</span>
+                                <span>{luckyBankerBetCount} 注</span>
+                              </div>
+                              <Slider
+                                min={1}
+                                max={10}
+                                step={1}
+                                value={[luckyBankerBetCount]}
+                                onValueChange={(val) => setLuckyBankerBetCount(Array.isArray(val) ? val[0] : val)}
+                                className="py-1 cursor-pointer"
+                              />
+                              <div className="flex justify-between text-xs font-black text-zinc-400 mt-1">
+                                <span>1 注</span>
+                                <span>10 注</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     <p className="text-xs font-bold text-zinc-500 mt-1">
-                      最多可填寫 6 個號碼。系統每一注都必定會包含這些號碼。
+                      {luckyNumbers.length > 6 && useLuckyBankerMode
+                        ? "系統將智能為您組合 2-4 膽的「膽拖」注項。"
+                        : "如選取超過 6 個號碼，系統將隨機組合。若少於 6 個，則每注必定包含這些號碼。"}
                       <br/>
                       <span className="text-[#3b82f6]">選取的幸運號碼可以不在選取的號碼範圍﹐但依然可以生成。</span>
                     </p>
