@@ -52,14 +52,14 @@ async function startServer() {
             role: 'user',
             parts: [
               {
-                text: `You are an OCR and data extraction expert. I am providing an image of a lottery ticket (Mark Six / 六合彩). 
-Please extract all the selected bets (combinations of numbers). 
-IMPORTANT RULES:
-1. Each bet normally consists of 6 numbers between 1 and 49.
-2. Return the result strictly as a JSON array of arrays of numbers. For example: [[8, 12, 14, 17, 27, 28], [8, 13, 16, 24, 33, 38]]. 
-3. If some rows have fewer than 6 numbers or it's a partial read, try to capture them as an array anyway.
-4. Only use numbers from the image. Do not make up numbers.
-5. If the image is blurry, try your best.
+                text: `You are an OCR and data extraction expert extracting lottery bets (Mark Six / 六合彩) from an image. The image may be a physical ticket or a digital app screenshot. IMPORTANT RULES:
+1. Identify if a bet is a normal bet (單式) or a "Banker and Legs" bet (膽拖).
+2. For the app screenshot, "Banker and Legs" bets show the Banker numbers (膽) inside a yellow highlighted bubble with a small "拖" badge on the bottom right. The Leg numbers (腳) are displayed below them.
+3. Return the result STRICTLY as a JSON array of objects.
+   - For a normal bet, use this schema: { "isBankerLegs": false, "numbers": [8, 12, 14, 17, 27, 28] }
+   - For a Banker and Legs bet, use this schema: { "isBankerLegs": true, "bankersCount": 2, "numbers": [8, 12, 14, 17, 27, 28, 30] } (where the first \`bankersCount\` numbers in the array MUST be the Bankers from the yellow bubble, and the rest are the Legs).
+4. If some rows have fewer than 6 numbers or it's a partial read, capture them in "numbers" anyway.
+5. Only use numbers from the image. Do not make up numbers.
 6. Do not include any markdown formatting, only the JSON string.`
               },
               {
@@ -93,20 +93,45 @@ IMPORTANT RULES:
         throw new Error("AI returned a non-array");
       }
 
-      // Cleanup bets (ensure they are arrays of 1-49 numbers)
+      // Cleanup bets (ensure they are arrays of 1-49 numbers or proper objects)
       let cleanedBets = [];
       for (const bet of bets) {
-        if (!Array.isArray(bet)) continue;
-        let uniqueNums = [...new Set(bet.map((n: any) => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 49))];
-        if (uniqueNums.length >= 1) { 
-           // Pad to 6 numbers to be consistent with UI
-           let finalBet = [...uniqueNums];
-           let padNum = 1;
-           while(finalBet.length < 6) {
-             if (!finalBet.includes(padNum)) finalBet.push(padNum);
-             padNum++;
-           }
-           cleanedBets.push(finalBet.sort((a,b) => a - b));
+        if (Array.isArray(bet)) {
+          let uniqueNums = [...new Set(bet.map((n: any) => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 49))];
+          if (uniqueNums.length >= 1) { 
+             let finalBet = [...uniqueNums];
+             let padNum = 1;
+             while(finalBet.length < 6) {
+               if (!finalBet.includes(padNum)) finalBet.push(padNum);
+               padNum++;
+             }
+             cleanedBets.push({ isBankerLegs: false, numbers: finalBet.sort((a: number, b: number) => a - b) });
+          }
+        } else if (bet && typeof bet === 'object' && Array.isArray(bet.numbers)) {
+          let uniqueNums = [...new Set(bet.numbers.map((n: any) => parseInt(n, 10)).filter((n: any) => !isNaN(n) && n >= 1 && n <= 49))];
+          if (uniqueNums.length >= 1) {
+            let bCount = bet.bankersCount || 0;
+            // Pad to ensure at least valid amount of numbers if needed
+            let isBanker = bet.isBankerLegs && bCount > 0 && uniqueNums.length >= (bCount + 2);
+            if (isBanker) {
+              const bankers = uniqueNums.slice(0, bCount);
+              const legs = uniqueNums.slice(bCount);
+              // Clean up by sorting them separately
+              cleanedBets.push({
+                 isBankerLegs: true,
+                 bankersCount: bCount,
+                 numbers: [...bankers.sort((a: number, b: number) => a - b), ...legs.sort((a: number, b: number) => a - b)]
+              });
+            } else {
+              let finalBet = [...uniqueNums];
+              let padNum = 1;
+              while(finalBet.length < 6) {
+                if (!finalBet.includes(padNum)) finalBet.push(padNum);
+                padNum++;
+              }
+              cleanedBets.push({ isBankerLegs: false, numbers: finalBet.sort((a: number, b: number) => a - b) });
+            }
+          }
         }
       }
 

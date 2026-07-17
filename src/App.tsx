@@ -182,6 +182,55 @@ function getCombos(arr: number[], k: number): number[][] {
   return [...combsWithFirst, ...combsWithoutFirst];
 }
 
+function expandBetsToSingle(bets: any[]): number[][] {
+  return bets.flatMap(b => {
+    if (Array.isArray(b)) return [b];
+    if (b.isBankerLegs && b.bankersCount) {
+      const bankers = b.numbers.slice(0, b.bankersCount);
+      const legs = b.numbers.slice(b.bankersCount);
+      const requiredLegs = 6 - bankers.length;
+      if (requiredLegs > 0) return getCombos(legs, requiredLegs).map(c => [...bankers, ...c].sort((x,y)=>x-y));
+      if (requiredLegs === 0) return [[...bankers].sort((x,y)=>x-y)];
+    }
+    if (b.numbers && Array.isArray(b.numbers)) return [b.numbers];
+    return [];
+  });
+}
+
+
+
+function parseQRData(qrData: string | null): any[] {
+  if (!qrData) return [];
+  try {
+    const parsed = JSON.parse(qrData);
+    if (!Array.isArray(parsed)) return [];
+    const valid: any[] = [];
+    for (const val of parsed) {
+       if (Array.isArray(val) && val.length === 6 && val.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49)) {
+         valid.push({ numbers: val, isBankerLegs: false });
+       } else if (val && typeof val === 'object' && Array.isArray(val.numbers) && val.numbers.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49)) {
+         valid.push(val);
+       }
+    }
+    return valid;
+  } catch(e) {
+    return [];
+  }
+}
+
+function parseApiBets(parsed: any): any[] {
+  if (!Array.isArray(parsed)) return [];
+  const valid: any[] = [];
+  for (const val of parsed) {
+    if (Array.isArray(val) && val.length === 6 && val.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49)) {
+      valid.push({ numbers: val, isBankerLegs: false });
+    } else if (val && typeof val === 'object' && Array.isArray(val.numbers) && val.numbers.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49)) {
+      valid.push(val);
+    }
+  }
+  return valid;
+}
+
 const parseRanges = (input: string): {start: number, end: number}[] => {
   const ranges: {start: number, end: number}[] = [];
   if (!input.trim()) return ranges;
@@ -509,17 +558,20 @@ export default function App() {
           reader.readAsDataURL(file);
         });
 
-        let validBets: number[][] = [];
+              let shouldSkipQR = false;
         if (qrData) {
           try {
-            const parsed = JSON.parse(qrData);
-            if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
-              validBets = parsed;
+            const parsedRaw = JSON.parse(qrData);
+            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
+            if (isOldFormat && parsedRaw.length > 5) {
+              shouldSkipQR = true;
             }
           } catch(e) {}
         }
 
-        if (validBets.length > 0) {
+        const qrParsed = parseQRData(qrData);
+        let validBets = expandBetsToSingle(qrParsed);
+        if (!shouldSkipQR && validBets.length > 0) {
           setBacktestFiles(prev => {
             const updated = prev.map(item => 
               item.name === file.name ? { ...item, status: 'success' as const, bets: validBets } : item
@@ -596,13 +648,10 @@ export default function App() {
           throw new Error("無法辨識圖片號碼");
         }
 
-        const parsed = responseData.bets;
-        if (Array.isArray(parsed)) {
-          const extractedBets = parsed.filter((b: any) => 
-            Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49)
-          );
-          
-          if (extractedBets.length > 0) {
+        const parsed = parseApiBets(responseData.bets);
+        const extractedBets = expandBetsToSingle(parsed);
+        
+        if (extractedBets.length > 0) {
             setBacktestFiles(prev => {
               const updated = prev.map(item => 
                 item.name === file.name ? { ...item, status: 'success' as const, bets: extractedBets } : item
@@ -613,10 +662,6 @@ export default function App() {
           } else {
             throw new Error("不包含有效號碼組合");
           }
-        } else {
-          throw new Error("格式識別失敗");
-        }
-
       } catch (err: any) {
         console.error(`Error processing backtest file ${file.name}:`, err);
         setBacktestFiles(prev => {
@@ -2050,17 +2095,20 @@ export default function App() {
           reader.readAsDataURL(file);
         });
 
-        let fileBets: number[][] = [];
+              let shouldSkipQR = false;
         if (qrData) {
           try {
-            const parsed = JSON.parse(qrData);
-            if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
-              fileBets = parsed;
+            const parsedRaw = JSON.parse(qrData);
+            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
+            if (isOldFormat && parsedRaw.length > 5) {
+              shouldSkipQR = true;
             }
           } catch(e) {}
         }
 
-        if (fileBets.length > 0) {
+        const qrParsed = parseQRData(qrData);
+        let fileBets = expandBetsToSingle(qrParsed);
+        if (!shouldSkipQR && fileBets.length > 0) {
           allCombinedBets.push(...fileBets);
           succeededCount++;
           continue;
@@ -2132,18 +2180,13 @@ export default function App() {
         if (!responseData.success) {
           throw new Error("Failed to extract numbers");
         }
-        const parsed = responseData.bets;
-
-        if (Array.isArray(parsed)) {
-          const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
-          if (validBets.length > 0) {
+        const parsed = parseApiBets(responseData.bets);
+        const validBets = expandBetsToSingle(parsed);
+        if (validBets.length > 0) {
             allCombinedBets.push(...validBets);
             succeededCount++;
-          } else {
-            failedCount++;
-          }
         } else {
-          failedCount++;
+            failedCount++;
         }
       } catch (err: any) {
         console.error(`Error parsing file ${file.name}:`, err);
@@ -2218,21 +2261,24 @@ export default function App() {
         reader.readAsDataURL(file);
       });
 
-      if (qrData) {
-        let validBets: number[][] = [];
-        try {
-          const parsed = JSON.parse(qrData);
-          if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
-             validBets = parsed;
-          }
-        } catch(e) {}
-        
-        if (validBets.length > 0) {
-          handlePerformCheck(validBets);
+            let shouldSkipQR = false;
+        if (qrData) {
+          try {
+            const parsedRaw = JSON.parse(qrData);
+            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
+            if (isOldFormat && parsedRaw.length > 5) {
+              shouldSkipQR = true;
+            }
+          } catch(e) {}
+        }
+
+      const qrParsed = parseQRData(qrData);
+      let qrValidBets = expandBetsToSingle(qrParsed);
+      if (!shouldSkipQR && qrValidBets.length > 0) {
+          handlePerformCheck(qrValidBets);
           toast.success(<div className="text-center flex-1 font-bold text-xl">成功讀取號碼！</div>, { id: "check-screenshot" });
           setIsCheckingScreenshot(false);
           return;
-        }
       }
 
       // 2. Fallback to API if QR not found or invalid
@@ -2302,18 +2348,14 @@ export default function App() {
       if (!responseData.success) {
         throw new Error("Failed to extract numbers");
       }
-      const parsed = responseData.bets;
-
-      if (Array.isArray(parsed)) {
-        const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
-        if (validBets.length > 0) {
-          handlePerformCheck(validBets);
+      const parsed = parseApiBets(responseData.bets);
+      const apiValidBets = expandBetsToSingle(parsed);
+      
+      if (apiValidBets.length > 0) {
+          handlePerformCheck(apiValidBets);
           toast.success(<div className="text-center flex-1 font-bold">成功解析號碼！</div>, { id: "check-screenshot" });
-        } else {
-          throw new Error("無效圖片，請使用本系統截圖");
-        }
       } else {
-        throw new Error("無效圖片，請使用本系統截圖");
+          throw new Error("無效圖片，請使用本系統截圖");
       }
     } catch (err: any) {
       console.error(err);
@@ -2377,22 +2419,25 @@ export default function App() {
         reader.readAsDataURL(file);
       });
 
-      if (qrData) {
-        let validBets: number[][] = [];
-        try {
-          const parsed = JSON.parse(qrData);
-          if (Array.isArray(parsed) && parsed.every(val => Array.isArray(val) && val.length === 6)) {
-             validBets = parsed;
-          }
-        } catch(e) {}
-        
-        if (validBets.length > 0) {
-          setGeneratedBets(validBets.map(b => ({ numbers: b, explanations: ["從圖片解析載入"] })));
-          setUndoStack([]);
-          setIsHkjcDialogOpen(false);
-          toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
-          return;
+            let shouldSkipQR = false;
+        if (qrData) {
+          try {
+            const parsedRaw = JSON.parse(qrData);
+            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
+            if (isOldFormat && parsedRaw.length > 5) {
+              shouldSkipQR = true;
+            }
+          } catch(e) {}
         }
+
+      const qrParsed = parseQRData(qrData);
+      let qrValidBets = qrParsed;
+      if (!shouldSkipQR && qrValidBets.length > 0) {
+        setGeneratedBets(qrValidBets.map(b => ({ ...b, explanations: ["從圖片解析載入"] })));
+        setUndoStack([]);
+        setIsHkjcDialogOpen(false);
+        toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {qrValidBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
+        return;
       }
 
       // 2. Fallback to API if QR fails
@@ -2462,17 +2507,13 @@ export default function App() {
       if (!responseData.success) {
         throw new Error("Failed to extract numbers");
       }
-      const parsed = responseData.bets;
-
-      if (Array.isArray(parsed)) {
-        const validBets = parsed.filter((b: any) => Array.isArray(b) && b.length === 6 && b.every((n: any) => typeof n === 'number' && n >= 1 && n <= 49));
-        if (validBets.length > 0) {
-          setGeneratedBets(validBets.map(b => ({ numbers: b, explanations: ["從圖片解析載入"] })));
-          setUndoStack([]);
-          toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {validBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
-        } else {
-          throw new Error("無法識別號碼，請使用本系統截圖");
-        }
+      const parsed = parseApiBets(responseData.bets);
+      const apiValidBets = parsed;
+      
+      if (apiValidBets.length > 0) {
+        setGeneratedBets(apiValidBets.map(b => ({ ...b, explanations: ["從圖片解析載入"] })));
+        setUndoStack([]);
+        toast.success(<div className="text-center flex-1 font-bold text-xl">成功載入 {apiValidBets.length} 注號碼！</div>, { id: "regenerate-screenshot" });
       } else {
         throw new Error("無法識別號碼，請使用本系統截圖");
       }
@@ -5678,15 +5719,11 @@ export default function App() {
                     📲 快速對獎 QR Code
                   </h4>
                   <div className="p-3 bg-white border-2 border-black rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] inline-block">
-                    <QRCodeSVG value={JSON.stringify(generatedBets.flatMap(b => {
+                    <QRCodeSVG value={JSON.stringify(generatedBets.map(b => {
                       if (b.isBankerLegs && b.bankersCount) {
-                        const bankers = b.numbers.slice(0, b.bankersCount);
-                        const legs = b.numbers.slice(b.bankersCount);
-                        const requiredLegs = 6 - bankers.length;
-                        if (requiredLegs > 0) return getCombos(legs, requiredLegs).map(c => [...bankers, ...c].sort((x,y)=>x-y));
-                        if (requiredLegs === 0) return [[...bankers].sort((x,y)=>x-y)];
+                        return { isBankerLegs: true, bankersCount: b.bankersCount, numbers: b.numbers };
                       }
-                      return [b.numbers];
+                      return b.numbers;
                     }))} size={150} />
                   </div>
                   <p className="mt-2 text-xs font-black text-zinc-600">
@@ -6674,15 +6711,11 @@ export default function App() {
           </div>
 
           <div className="mt-8 mb-4 p-4 bg-white rounded-2xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center">
-            <QRCodeSVG value={JSON.stringify(generatedBets.flatMap(b => {
+            <QRCodeSVG value={JSON.stringify(generatedBets.map(b => {
               if (b.isBankerLegs && b.bankersCount) {
-                const bankers = b.numbers.slice(0, b.bankersCount);
-                const legs = b.numbers.slice(b.bankersCount);
-                const requiredLegs = 6 - bankers.length;
-                if (requiredLegs > 0) return getCombos(legs, requiredLegs).map(c => [...bankers, ...c].sort((x,y)=>x-y));
-                if (requiredLegs === 0) return [[...bankers].sort((x,y)=>x-y)];
+                return { isBankerLegs: true, bankersCount: b.bankersCount, numbers: b.numbers };
               }
-              return [b.numbers];
+              return b.numbers;
             }))} size={160} />
             <div className="mt-3 text-sm font-black text-black">快速對獎・SCAN ME</div>
           </div>
