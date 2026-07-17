@@ -558,20 +558,11 @@ export default function App() {
           reader.readAsDataURL(file);
         });
 
-              let shouldSkipQR = false;
-        if (qrData) {
-          try {
-            const parsedRaw = JSON.parse(qrData);
-            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
-            if (isOldFormat && parsedRaw.length > 5) {
-              shouldSkipQR = true;
-            }
-          } catch(e) {}
-        }
+        
 
         const qrParsed = parseQRData(qrData);
         let validBets = expandBetsToSingle(qrParsed);
-        if (!shouldSkipQR && validBets.length > 0) {
+        if (validBets.length > 0) {
           setBacktestFiles(prev => {
             const updated = prev.map(item => 
               item.name === file.name ? { ...item, status: 'success' as const, bets: validBets } : item
@@ -2095,20 +2086,11 @@ export default function App() {
           reader.readAsDataURL(file);
         });
 
-              let shouldSkipQR = false;
-        if (qrData) {
-          try {
-            const parsedRaw = JSON.parse(qrData);
-            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
-            if (isOldFormat && parsedRaw.length > 5) {
-              shouldSkipQR = true;
-            }
-          } catch(e) {}
-        }
+        
 
         const qrParsed = parseQRData(qrData);
         let fileBets = expandBetsToSingle(qrParsed);
-        if (!shouldSkipQR && fileBets.length > 0) {
+        if (fileBets.length > 0) {
           allCombinedBets.push(...fileBets);
           succeededCount++;
           continue;
@@ -2261,20 +2243,11 @@ export default function App() {
         reader.readAsDataURL(file);
       });
 
-            let shouldSkipQR = false;
-        if (qrData) {
-          try {
-            const parsedRaw = JSON.parse(qrData);
-            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
-            if (isOldFormat && parsedRaw.length > 5) {
-              shouldSkipQR = true;
-            }
-          } catch(e) {}
-        }
+      
 
       const qrParsed = parseQRData(qrData);
       let qrValidBets = expandBetsToSingle(qrParsed);
-      if (!shouldSkipQR && qrValidBets.length > 0) {
+      if (qrValidBets.length > 0) {
           handlePerformCheck(qrValidBets);
           toast.success(<div className="text-center flex-1 font-bold text-xl">成功讀取號碼！</div>, { id: "check-screenshot" });
           setIsCheckingScreenshot(false);
@@ -2419,20 +2392,11 @@ export default function App() {
         reader.readAsDataURL(file);
       });
 
-            let shouldSkipQR = false;
-        if (qrData) {
-          try {
-            const parsedRaw = JSON.parse(qrData);
-            const isOldFormat = Array.isArray(parsedRaw) && parsedRaw.every((val: any) => Array.isArray(val));
-            if (isOldFormat && parsedRaw.length > 5) {
-              shouldSkipQR = true;
-            }
-          } catch(e) {}
-        }
+      
 
       const qrParsed = parseQRData(qrData);
       let qrValidBets = qrParsed;
-      if (!shouldSkipQR && qrValidBets.length > 0) {
+      if (qrValidBets.length > 0) {
         setGeneratedBets(qrValidBets.map(b => ({ ...b, explanations: ["從圖片解析載入"] })));
         setUndoStack([]);
         setIsHkjcDialogOpen(false);
